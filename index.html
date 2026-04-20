@@ -1,0 +1,1388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Amazon Performance Audit</title>
+<link rel="icon" type="image/png" href="favicon-v3.png">
+<link rel="shortcut icon" href="favicon-v3.png">
+<script>window.addEventListener("error",function(e){if(e.target&&e.target.tagName==="LINK")e.target.remove();},true);</script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+:root{
+  --blue:#A7C7E7;--green:#BEE3DB;--purple:#D7C6F2;--pink:#F7D6E0;--yellow:#FFF3B0;
+  --blue-d:#5B9EC9;--green-d:#6BBFB0;--purple-d:#9B7FD4;--pink-d:#D97DA6;--yellow-d:#C8A800;
+  --bg:#F9FAFB;--card:#FFFFFF;--text:#1F2937;--text2:#6B7280;--border:#E5E7EB;--border2:#D1D5DB;
+  --danger:#FCA5A5;--danger-d:#DC2626;--warn:#FDE68A;--warn-d:#D97706;--ok:#A7F3D0;--ok-d:#059669;
+  --font:"Plus Jakarta Sans",system-ui,sans-serif;--mono:"JetBrains Mono",monospace;
+  --r:10px;--r-lg:14px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;overflow:hidden;}
+body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14px;line-height:1.5;}
+.app{display:flex;flex-direction:column;height:100vh;}
+.topbar{background:#fff;border-bottom:2px solid var(--blue);padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;z-index:50;}
+.topbar-logo{font-size:17px;font-weight:800;display:flex;align-items:center;gap:10px;letter-spacing:-0.3px;}
+.logo-icon{width:32px;height:32px;background:linear-gradient(135deg,var(--blue),var(--purple));border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;}
+.topbar-right{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text2);}
+.status-dot{width:8px;height:8px;border-radius:50%;background:var(--border2);transition:background 0.3s;}
+.status-dot.ready{background:var(--ok-d);box-shadow:0 0 0 3px rgba(5,150,105,0.15);}
+.body-row{display:flex;flex:1;overflow:hidden;}
+.sidebar{width:212px;background:#fff;border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto;padding:16px 0;}
+.sidebar-label{font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--text2);padding:16px 16px 6px;font-family:var(--mono);}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 16px;cursor:pointer;border-radius:8px;margin:1px 8px;color:var(--text2);font-size:13px;font-weight:500;transition:all 0.15s;border:1px solid transparent;user-select:none;}
+.nav-item:hover{background:var(--bg);color:var(--text);}
+.nav-item.active{background:linear-gradient(135deg,rgba(167,199,231,0.25),rgba(215,198,242,0.15));color:var(--text);border-color:var(--blue-d);font-weight:700;}
+.nav-icon{font-size:15px;width:18px;text-align:center;}
+.tf-pill{font-size:9px;font-family:var(--mono);padding:1px 6px;border-radius:10px;margin-left:auto;white-space:nowrap;}
+.tf-m{background:rgba(167,199,231,0.4);color:#1e6091;border:1px solid var(--blue-d);}
+.tf-d{background:rgba(190,227,219,0.4);color:#0f766e;border:1px solid var(--green-d);}
+.tf-l{background:rgba(215,198,242,0.4);color:#5b21b6;border:1px solid var(--purple-d);}
+.main{flex:1;overflow-y:auto;padding:24px;}
+.panel{display:none;}.panel.active{display:block;}
+.page-header{display:flex;align-items:baseline;gap:12px;margin-bottom:20px;}
+.page-title{font-size:20px;font-weight:800;letter-spacing:-0.4px;}
+.chip{font-size:10px;font-family:var(--mono);font-weight:500;letter-spacing:0.5px;text-transform:uppercase;padding:3px 10px;border-radius:20px;background:var(--bg);border:1px solid var(--border2);color:var(--text2);}
+.chip-m{background:rgba(167,199,231,0.3);border-color:var(--blue-d);color:#1e6091;}
+.chip-d{background:rgba(190,227,219,0.3);border-color:var(--green-d);color:#0f766e;}
+.chip-l{background:rgba(215,198,242,0.3);border-color:var(--purple-d);color:#5b21b6;}
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:12px;margin-bottom:24px;}
+.kpi-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:16px 18px;border-top:3px solid var(--blue-d);box-shadow:0 1px 3px rgba(0,0,0,0.06);}
+.kpi-card.g{border-top-color:var(--green-d);}
+.kpi-card.p{border-top-color:var(--purple-d);}
+.kpi-card.pk{border-top-color:var(--pink-d);}
+.kpi-card.y{border-top-color:var(--yellow-d);}
+.kpi-card.r{border-top-color:var(--danger-d);}
+.kpi-label{font-size:10px;font-family:var(--mono);font-weight:500;letter-spacing:0.5px;text-transform:uppercase;color:var(--text2);margin-bottom:8px;}
+.kpi-value{font-size:22px;font-weight:800;letter-spacing:-0.8px;line-height:1;margin-bottom:4px;}
+.kpi-sub{font-size:11px;color:var(--text2);}
+.chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;}
+.chart-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:18px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.06);}
+.chart-card.full{grid-column:1/-1;}
+.chart-title{font-size:13px;font-weight:700;margin-bottom:14px;}
+.chart-wrap{position:relative;height:200px;}
+.table-controls{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center;}
+.tbl-search{font-family:var(--font);font-size:13px;padding:7px 12px;border:1px solid var(--border);border-radius:8px;background:#fff;outline:none;min-width:180px;transition:border-color 0.15s;}
+.tbl-search:focus{border-color:var(--blue-d);box-shadow:0 0 0 3px rgba(167,199,231,0.3);}
+.tbl-select{font-family:var(--font);font-size:13px;padding:7px 12px;border:1px solid var(--border);border-radius:8px;background:#fff;cursor:pointer;outline:none;color:var(--text);}
+.pill{font-family:var(--font);font-size:12px;font-weight:600;padding:6px 14px;border-radius:20px;border:1px solid var(--border);background:#fff;cursor:pointer;color:var(--text2);transition:all 0.15s;white-space:nowrap;}
+.pill:hover{border-color:var(--blue-d);color:var(--text);}
+.pill.on{background:var(--blue);border-color:var(--blue-d);color:#1e6091;}
+.pill.don{background:var(--danger);border-color:var(--danger-d);color:var(--danger-d);}
+.toggle-row{display:inline-flex;background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:3px;}
+.toggle-btn{font-family:var(--font);font-size:12px;font-weight:600;padding:5px 16px;border:none;border-radius:7px;background:transparent;color:var(--text2);cursor:pointer;transition:all 0.15s;}
+.toggle-btn.on{background:#fff;color:var(--text);box-shadow:0 1px 4px rgba(0,0,0,0.1);}
+.table-wrap{border-radius:var(--r);border:1px solid var(--border);overflow:auto;max-height:520px;}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+thead{position:sticky;top:0;z-index:2;background:var(--bg);}
+th{padding:9px 13px;text-align:left;font-family:var(--mono);font-size:10px;letter-spacing:0.5px;text-transform:uppercase;color:var(--text2);border-bottom:1px solid var(--border);white-space:nowrap;}
+td{padding:9px 13px;border-bottom:1px solid var(--border);vertical-align:middle;}
+tbody tr:nth-child(even){background:#FAFCFF;}
+tbody tr:nth-child(even):hover{background:rgba(167,199,231,0.12);}
+tbody tr:nth-child(odd):hover{background:rgba(167,199,231,0.08);}
+tbody tr:last-child td{border-bottom:none;}
+.td-mono{font-family:var(--mono);font-size:11px;}
+/* ASIN IMAGE */
+.asin-cell{display:flex;align-items:center;gap:9px;min-width:168px;}
+.asin-thumb{width:44px;height:44px;object-fit:contain;border-radius:6px;border:1px solid var(--border);background:#fff;cursor:pointer;transition:transform 0.15s;display:block;flex-shrink:0;}
+.asin-thumb:hover{transform:scale(1.1);}
+.asin-ph{width:44px;height:44px;border-radius:6px;background:var(--bg);border:1px dashed var(--border2);display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--border2);flex-shrink:0;}
+.asin-info{min-width:0;}
+.asin-code{font-family:var(--mono);font-size:11px;color:#1e6091;font-weight:500;cursor:pointer;}
+.asin-code:hover{text-decoration:underline;}
+.asin-title-s{font-size:11px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:115px;}
+/* BADGES */
+.badge{display:inline-flex;align-items:center;gap:3px;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap;}
+.b-op{background:rgba(190,227,219,0.6);color:#0f766e;border:1px solid var(--green-d);}
+.b-ui{background:rgba(167,199,231,0.5);color:#1e6091;border:1px solid var(--blue-d);}
+.b-df{background:rgba(255,243,176,0.7);color:#92400e;border:1px solid var(--yellow-d);}
+.b-in{background:rgba(252,165,165,0.4);color:var(--danger-d);border:1px solid var(--danger);}
+.b-dm{background:rgba(215,198,242,0.6);color:#5b21b6;border:1px solid var(--purple-d);}
+.b-bl{background:rgba(252,165,165,0.4);color:var(--danger-d);border:1px solid var(--danger);}
+.b-en{background:rgba(167,245,208,0.5);color:var(--ok-d);}
+.b-pa{background:rgba(253,230,138,0.5);color:var(--warn-d);}
+.b-y{background:rgba(167,245,208,0.4);color:var(--ok-d);}
+.b-n{background:var(--bg);color:var(--text2);border:1px solid var(--border);}
+.b-sp{background:rgba(167,199,231,0.4);color:#1e6091;}
+.b-sb{background:rgba(215,198,242,0.4);color:#5b21b6;}
+.b-sd{background:rgba(190,227,219,0.4);color:#0f766e;}
+.b-ps{background:rgba(255,243,176,0.7);color:#92400e;border:1px solid var(--yellow-d);}
+/* ALERTS */
+.alert{border-radius:var(--r);padding:13px 16px;margin-bottom:16px;border-left:4px solid;font-size:13px;}
+.alert-d{background:#FFF5F5;border-color:var(--danger-d);}
+.alert-w{background:#FFFBEB;border-color:var(--warn-d);}
+.alert-i{background:#EFF8FF;border-color:var(--blue-d);}
+.alert-title{font-weight:700;margin-bottom:6px;}
+.alert-item{font-size:12px;font-family:var(--mono);margin:3px 0;}
+.section-head{font-size:15px;font-weight:700;margin:26px 0 12px;display:flex;align-items:center;gap:10px;}
+.section-head::after{content:"";flex:1;height:1px;background:linear-gradient(to right,var(--border),transparent);}
+.type-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;}
+.type-card{border-radius:var(--r);padding:18px;border:2px solid transparent;cursor:pointer;transition:all 0.15s;background:var(--card);box-shadow:0 1px 3px rgba(0,0,0,0.06);}
+.type-card.sp{border-color:var(--blue);}
+.type-card.sb{border-color:var(--purple);}
+.type-card.sd{border-color:var(--green);}
+.type-card:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,0.08);}
+.type-card.sel.sp{background:rgba(167,199,231,0.18);}
+.type-card.sel.sb{background:rgba(215,198,242,0.18);}
+.type-card.sel.sd{background:rgba(190,227,219,0.18);}
+.tc-label{font-size:12px;font-weight:700;margin-bottom:6px;color:var(--text2);}
+.tc-spend{font-size:22px;font-weight:800;letter-spacing:-0.8px;margin-bottom:2px;}
+.tc-meta{font-size:11px;color:var(--text2);font-family:var(--mono);}
+.upload-hero{text-align:center;padding:24px;margin-bottom:20px;}
+.upload-hero h1{font-size:26px;font-weight:800;letter-spacing:-0.8px;margin-bottom:6px;}
+.upload-hero p{color:var(--text2);font-size:14px;}
+.upload-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;margin-bottom:20px;}
+.upload-slot{border:2px dashed var(--border);border-radius:var(--r-lg);padding:18px;background:var(--card);transition:all 0.18s;}
+.upload-slot:hover{border-color:var(--blue-d);}
+.upload-slot.done{border-style:solid;border-color:var(--green-d);background:rgba(190,227,219,0.08);}
+.upload-slot.error{border-style:solid;border-color:var(--danger-d);background:rgba(252,165,165,0.06);}
+.slot-emoji{font-size:26px;margin-bottom:8px;display:block;}
+.slot-name{font-weight:700;font-size:13px;margin-bottom:3px;}
+.slot-desc{font-size:11px;color:var(--text2);margin-bottom:10px;}
+.slot-tag{display:inline-block;font-family:var(--mono);font-size:10px;background:var(--bg);border:1px solid var(--border2);padding:2px 7px;border-radius:10px;color:var(--text2);margin-bottom:10px;}
+.file-btn{font-family:var(--font);font-size:12px;font-weight:600;padding:6px 14px;border-radius:7px;border:1px solid var(--border2);background:#fff;cursor:pointer;color:var(--text);transition:all 0.15s;}
+.file-btn:hover{border-color:var(--blue-d);color:#1e6091;}
+.slot-status{font-size:11px;font-family:var(--mono);margin-top:8px;display:block;}
+.slot-status.ok{color:var(--ok-d);}.slot-status.fail{color:var(--danger-d);}
+.go-btn{font-family:var(--font);font-size:15px;font-weight:700;padding:13px 36px;border:none;border-radius:var(--r);background:linear-gradient(135deg,#A7C7E7,#D7C6F2);color:var(--text);cursor:pointer;letter-spacing:-0.3px;transition:all 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.1);}
+.go-btn:hover{transform:translateY(-1px);box-shadow:0 4px 16px rgba(0,0,0,0.1);}
+.go-btn:disabled{opacity:0.4;cursor:not-allowed;transform:none;}
+.empty-state{text-align:center;padding:60px 20px;color:var(--text2);}
+.empty-icon{font-size:48px;margin-bottom:12px;display:block;}
+.empty-title{font-size:16px;font-weight:700;margin-bottom:6px;color:var(--text);}
+.text-d{color:var(--danger-d);}.text-ok{color:var(--ok-d);}.text-w{color:var(--warn-d);}.text-m{color:var(--text2);}.fw7{font-weight:700;}.mb16{margin-bottom:16px;}
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
+</style>
+</head>
+<body>
+<div class="app">
+<header class="topbar">
+  <div class="topbar-logo"><div class="logo-icon">&#x1F680;</div>Amazon Performance Audit</div>
+  <div class="topbar-right"><span id="sDot" class="status-dot"></span><span id="sTxt">No data loaded</span></div>
+</header>
+<div class="body-row">
+<nav class="sidebar">
+  <div class="sidebar-label">Setup</div>
+  <div class="nav-item active" onclick="goTab('upload',this)"><span class="nav-icon">&#x1F4C1;</span>Upload Files</div>
+  <div class="sidebar-label">Analytics</div>
+  <div class="nav-item" onclick="goTab('tab1',this)"><span class="nav-icon">&#x1F4CA;</span>Executive<span class="tf-pill tf-m">Monthly</span></div>
+  <div class="nav-item" onclick="goTab('tab2',this)"><span class="nav-icon">&#x1F4E6;</span>ASIN Perf.<span class="tf-pill tf-d">30D</span></div>
+  <div class="nav-item" onclick="goTab('tab3',this)"><span class="nav-icon">&#x1F4B0;</span>PPC Perf.<span class="tf-pill tf-d">30D</span></div>
+  <div class="nav-item" onclick="goTab('tab4',this)"><span class="nav-icon">&#x1F50D;</span>Search Terms<span class="tf-pill tf-d">30D</span></div>
+  <div class="nav-item" onclick="goTab('tab5',this)"><span class="nav-icon">&#x1F4C8;</span>Brand Metrics<span class="tf-pill tf-l">LM</span></div>
+  <div class="nav-item" onclick="goTab('tab6',this)"><span class="nav-icon">&#x1F3AF;</span>Targeting<span class="tf-pill tf-d">30D</span></div>
+</nav>
+<main class="main">
+<!-- UPLOAD -->
+<div id="panel-upload" class="panel active">
+  <div class="upload-hero"><h1>&#x1F680; Amazon Performance Audit</h1><p>Upload your Amazon reports. File types are auto-detected from headers&nbsp;&mdash;&nbsp;not filenames.</p></div>
+  <div class="upload-grid">
+    <div class="upload-slot" id="slot-br"><span class="slot-emoji">&#x1F4CB;</span><div class="slot-name">Business Report</div><div class="slot-desc">Monthly seller central export with sessions &amp; sales</div><span class="slot-tag">CSV &middot; Monthly</span><br><input type="file" id="inp-br" accept=".csv" style="display:none" onchange="hf('br',this)"><button class="file-btn" onclick="document.getElementById('inp-br').click()">Choose CSV</button><span class="slot-status" id="ss-br"></span></div>
+    <div class="upload-slot" id="slot-ap"><span class="slot-emoji">&#x1F4E6;</span><div class="slot-name">ASIN Performance</div><div class="slot-desc">Child ASIN-level 30-day performance</div><span class="slot-tag">CSV &middot; 30 Days</span><br><input type="file" id="inp-ap" accept=".csv" style="display:none" onchange="hf('ap',this)"><button class="file-btn" onclick="document.getElementById('inp-ap').click()">Choose CSV</button><span class="slot-status" id="ss-ap"></span></div>
+    <div class="upload-slot" id="slot-ads"><span class="slot-emoji">&#x1F4B0;</span><div class="slot-name">Amazon Ads Bulk File</div><div class="slot-desc">SP / SB / SD campaigns &mdash; all entity sheets</div><span class="slot-tag">XLSX &middot; 30 Days</span><br><input type="file" id="inp-ads" accept=".xlsx,.xlsm,.xls" style="display:none" onchange="hf('ads',this)"><button class="file-btn" onclick="document.getElementById('inp-ads').click()">Choose XLSX</button><span class="slot-status" id="ss-ads"></span></div>
+    <div class="upload-slot" id="slot-json">
+      <span class="slot-emoji">&#x1F9E9;</span>
+      <div class="slot-name">Copy Response (JSON)</div>
+      <div class="slot-desc">Monthly ads data in nested MONTHLY JSON</div>
+      <span class="slot-tag">JSON &middot; Monthly</span>
+      <div style="display:flex;gap:6px;margin:10px 0 0;">
+        <button class="file-btn" id="jsonTabFile" onclick="jsonMode('file')" style="flex:1;">&#x1F4C4; Upload File</button>
+        <button class="file-btn" id="jsonTabPaste" onclick="jsonMode('paste')" style="flex:1;">&#x1F4CB; Paste JSON</button>
+      </div>
+      <!-- File mode -->
+      <div id="jsonFileMode" style="margin-top:8px;">
+        <input type="file" id="inp-json" accept=".json" style="display:none" onchange="hf('json',this)">
+        <button class="file-btn" onclick="document.getElementById('inp-json').click()">Choose .json file</button>
+      </div>
+      <!-- Paste mode -->
+      <div id="jsonPasteMode" style="display:none;margin-top:8px;">
+        <textarea id="jsonPasteArea"
+          placeholder='Paste your JSON here e.g. {"MONTHLY":{...}}'
+          oninput="jsonPasteInput(this)"
+          style="width:100%;height:90px;font-family:var(--mono);font-size:11px;padding:8px;border:1px solid var(--border);border-radius:6px;resize:vertical;outline:none;line-height:1.4;color:var(--text);background:#fff;"></textarea>
+      </div>
+      <span class="slot-status" id="ss-json"></span>
+    </div>
+    <div class="upload-slot" id="slot-bm"><span class="slot-emoji">&#x1F4C8;</span><div class="slot-name">Brand Metrics</div><div class="slot-desc">Search Query Performance &mdash; one or multiple CSVs</div><span class="slot-tag">CSV(s) &middot; Last Month</span><br><input type="file" id="inp-bm" accept=".csv" multiple style="display:none" onchange="hf('bm',this)"><button class="file-btn" onclick="document.getElementById('inp-bm').click()">Choose CSV(s)</button><span class="slot-status" id="ss-bm"></span></div>
+  </div>
+  <div id="uploadErrors"></div>
+  <div style="text-align:center;margin-top:8px;">
+    <button class="go-btn" id="goBtn" onclick="processAll()" disabled>&#x26A1; Process &amp; Analyse</button>
+    <p style="font-size:12px;color:var(--text2);margin-top:10px;">All processing is 100% client-side. No data leaves your browser.</p>
+  </div>
+</div>
+<!-- TAB 1 -->
+<div id="panel-tab1" class="panel"><div class="page-header"><span class="page-title">Executive Dashboard</span><span class="chip chip-m">Monthly Data</span></div><div id="t1"></div></div>
+<!-- TAB 2 -->
+<div id="panel-tab2" class="panel"><div class="page-header"><span class="page-title">ASIN Performance</span><span class="chip chip-d">Last 30 Days</span></div><div id="t2"></div></div>
+<!-- TAB 3 -->
+<div id="panel-tab3" class="panel"><div class="page-header"><span class="page-title">PPC Performance</span><span class="chip chip-d">Last 30 Days</span></div><div id="t3"></div></div>
+<!-- TAB 4 -->
+<div id="panel-tab4" class="panel"><div class="page-header"><span class="page-title">Search Term Analysis</span><span class="chip chip-d">Last 30 Days</span></div><div id="t4"></div></div>
+<!-- TAB 5 -->
+<div id="panel-tab5" class="panel"><div class="page-header"><span class="page-title">Search Query Performance</span><span class="chip chip-l">Last Month</span></div><div id="t5"></div></div>
+<!-- TAB 6 -->
+<div id="panel-tab6" class="panel"><div class="page-header"><span class="page-title">Targeting Performance</span><span class="chip chip-d">Last 30 Days</span></div><div id="t6"></div></div>
+</main>
+</div>
+</div>
+
+<script>
+// ============================================================
+// STATE
+// ============================================================
+const S={
+  P:{},
+  D:{br:[],ap:[],mAds:[],
+     ads:{sp:{campaigns:[],adGroups:[],keywords:[],productTargeting:[],productAds:[],biddingAdj:[],searchTerms:[]},
+          sb:{campaigns:[],keywords:[],productTargeting:[],searchTerms:[]},
+          sd:{campaigns:[],productAds:[],contextual:[],audience:[]}},
+     bm:[]},
+  charts:{},
+  cache:new Map()
+};
+
+// ============================================================
+// UTILS
+// ============================================================
+const sN=v=>{const n=parseFloat(String(v||'').replace(/[$,%\s]/g,''));return isNaN(n)?0:n;};
+const sP=v=>{const s=String(v||'');if(s.includes('%'))return sN(s)/100;const n=sN(s);return n>1?n/100:n;};
+const dv=(a,b)=>b?a/b:0;
+const fC=v=>'$'+sN(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fP=v=>(sN(v)*100).toFixed(2)+'%';
+const fN=v=>sN(v).toLocaleString('en-US',{maximumFractionDigits:0});
+const esc=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const el=id=>document.getElementById(id);
+const htm=(id,h)=>{const e=el(id);if(e)e.innerHTML=h;};
+const nrm=s=>String(s||'').toLowerCase().trim().replace(/[\s\-\u2013\u2014_]+/g,' ');
+const gf=(row,names)=>{for(const n of names)for(const k of Object.keys(row))if(nrm(k).includes(nrm(n)))return row[k];return '';};
+
+function toMK(s){
+  if(!s)return'';const d=new Date(s);if(!isNaN(d))return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+  const m=String(s).match(/(\w+)[\/\-\s,]+(\d{4})/);
+  if(m){const d2=new Date(m[1]+' 1, '+m[2]);if(!isNaN(d2))return d2.getFullYear()+'-'+String(d2.getMonth()+1).padStart(2,'0');}
+  return String(s).substring(0,7);
+}
+function mLbl(k){if(!k)return'';const[y,m]=k.split('-');if(!y||!m)return k;return new Date(+y,+m-1,1).toLocaleString('default',{month:'short',year:'numeric'});}
+
+// ============================================================
+// NAVIGATION
+// ============================================================
+function goTab(tab,nav){
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  el('panel-'+tab).classList.add('active');
+  if(nav)nav.classList.add('active');
+}
+
+// ============================================================
+// ASIN IMAGE SYSTEM
+// ============================================================
+const AURL=a=>`https://images-na.ssl-images-amazon.com/images/P/${a}.01._SCLZZZZZZZ_.jpg`;
+const APGE=a=>`https://www.amazon.com/dp/${a}`;
+
+function asinCell(asin,title){
+  if(!asin||asin.length<5)return'<td>&#x2014;</td>';
+  const clean=esc(asin);
+  return `<td><div class="asin-cell">
+    <img class="asin-thumb" src="${AURL(asin)}" loading="lazy" alt="${clean}"
+      onclick="window.open('${APGE(asin)}','_blank')"
+      onload="S.cache.set('${clean}','ok')"
+      onerror="this.style.display='none';var p=document.createElement('div');p.className='asin-ph';p.innerHTML='&#x1F4E6;';this.parentNode.insertBefore(p,this);"
+      title="Open on Amazon">
+    <div class="asin-info">
+      <div class="asin-code" onclick="window.open('${APGE(asin)}','_blank')">${clean}</div>
+      ${title?`<div class="asin-title-s" title="${esc(title)}">${esc(title.substring(0,36))}${title.length>36?'&hellip;':''}</div>`:''}
+    </div>
+  </div></td>`;
+}
+
+// ============================================================
+// FILE HANDLING
+// ============================================================
+function hf(key,input){
+  const files=Array.from(input.files);if(!files.length)return;
+  S.P[key]=files;
+  const sl=el('slot-'+key),ss=el('ss-'+key);
+  if(sl)sl.classList.add('done');
+  if(ss){ss.className='slot-status ok';ss.textContent=key==='bm'?'\u2713 '+files.length+' file(s) selected':'\u2713 '+files[0].name;}
+  el('goBtn').disabled=false;
+}
+
+// JSON paste/file mode switcher
+function jsonMode(mode){
+  el('jsonFileMode').style.display  = mode==='file'  ? '' : 'none';
+  el('jsonPasteMode').style.display = mode==='paste' ? '' : 'none';
+  el('jsonTabFile').style.fontWeight  = mode==='file'  ? '700' : '500';
+  el('jsonTabPaste').style.fontWeight = mode==='paste' ? '700' : '500';
+  el('jsonTabFile').style.borderColor  = mode==='file'  ? 'var(--blue-d)' : '';
+  el('jsonTabPaste').style.borderColor = mode==='paste' ? 'var(--blue-d)' : '';
+  if(mode==='paste') setTimeout(()=>el('jsonPasteArea').focus(),50);
+}
+
+function jsonPasteInput(ta){
+  const val=ta.value.trim();
+  const ss=el('ss-json');
+  const slot=el('slot-json');
+  if(!val){ ss.textContent=''; ss.className='slot-status'; slot.className='upload-slot'; return; }
+  // Quick validation: try parsing
+  try{
+    const d=JSON.parse(val);
+    // Recursive search — mirrors parseJSONFile's findMonthly()
+    const findM=o=>{if(!o||typeof o!=='object')return null;if(o.MONTHLY&&typeof o.MONTHLY==='object')return o.MONTHLY;for(const v of Object.values(o)){const r=findM(v);if(r)return r;}return null;};
+    if(!findM(d)){ ss.className='slot-status fail'; ss.textContent='\u2717 No MONTHLY block found'; slot.className='upload-slot error'; return; }
+    // Store as pending text
+    S.P.jsonPaste=val;
+    delete S.P.json; // clear file if switching to paste
+    ss.className='slot-status ok'; ss.textContent='\u2713 JSON ready ('+val.length.toLocaleString()+' chars)';
+    slot.className='upload-slot done';
+    el('goBtn').disabled=false;
+  }catch(e){
+    S.P.jsonPaste=null;
+    ss.className='slot-status fail'; ss.textContent='\u2717 '+e.message.substring(0,60);
+    slot.className='upload-slot error';
+  }
+}
+
+const rTxt=f=>new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>{let t=e.target.result;if(t.charCodeAt(0)===0xFEFF)t=t.slice(1);res(t);};r.onerror=rej;r.readAsText(f);});
+const rBuf=f=>new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.onerror=rej;r.readAsArrayBuffer(f);});
+
+// ============================================================
+// CSV DETECT
+// ============================================================
+function detCSV(headers){
+  const n=headers.map(nrm);const has=s=>n.some(h=>h.includes(nrm(s)));
+  if(has('ordered product sales')&&has('sessions'))return'BR';
+  if(has('(parent) asin')||has('(child) asin')||(has('parent')&&has('asin')&&has('child')))return'AP';
+  if(has('search query volume')||(has('search query')&&has('brand share')))return'BM';
+  if(has('customer search term')&&has('campaign name'))return'ST';
+  return'UNKNOWN';
+}
+
+// ============================================================
+// PARSERS
+// ============================================================
+function parseBR(rows){
+  return rows.map(row=>{
+    const g=ns=>gf(row,ns);
+    return{dateRaw:g(['date','period']),sales:sN(g(['ordered product sales'])),orders:sN(g(['total order items'])),sessions:sN(g(['sessions - total','sessions'])),monthKey:toMK(g(['date','period']))};
+  }).filter(r=>r.sales>0||r.sessions>0);
+}
+function parseAP(rows){
+  return rows.map(row=>{
+    const g=ns=>gf(row,ns);
+    // childASIN: try explicit names, then any column with 'child' AND 'asin'
+    const childRaw=g(['(child) asin','child asin','asin'])||
+      Object.entries(row).find(([k])=>/child/i.test(k)&&/asin/i.test(k))||'';
+    const parentRaw=g(['(parent) asin','parent asin'])||
+      Object.entries(row).find(([k])=>/parent/i.test(k)&&/asin/i.test(k))||'';
+    const childASIN=String(Array.isArray(childRaw)?childRaw[1]:childRaw||'').trim().toUpperCase();
+    const parentASIN=String(Array.isArray(parentRaw)?parentRaw[1]:parentRaw||'').trim().toUpperCase();
+    return{
+      parentASIN, childASIN,
+      title:      String(g(['title','product name','asin title'])||'').trim(),
+      sessions:   sN(g(['sessions - total','sessions - total','sessions'])),
+      pageViews:  sN(g(['page views - total','page views'])),
+      sales:      sN(g(['ordered product sales'])),
+      units:      sN(g(['units ordered'])),
+      orders:     sN(g(['total order items','order items'])),
+      buyBox:     sP(g(['buy box percentage','featured offer (buy box) percentage','featured offer']))
+    };
+  }).filter(r=>r.childASIN||r.parentASIN);
+}
+function parseJSONFile(text){
+  // Parse JSON — handle large files
+  let root;try{root=JSON.parse(text);}catch(e){throw new Error('Invalid JSON syntax: '+e.message);}
+
+  // Find MONTHLY block — could be root.MONTHLY or root.data.MONTHLY or root itself
+  let m=null;
+  const findMonthly=obj=>{
+    if(!obj||typeof obj!=='object')return null;
+    if(obj.MONTHLY&&typeof obj.MONTHLY==='object')return obj.MONTHLY;
+    for(const v of Object.values(obj)){if(v&&typeof v==='object'){const r=findMonthly(v);if(r)return r;}}
+    return null;
+  };
+  m=findMonthly(root);
+  if(!m)throw new Error('Cannot find "MONTHLY" block anywhere in JSON');
+
+  // Require startDates
+  if(!m.startDates||!Array.isArray(m.startDates)||!m.startDates.length)
+    throw new Error('MONTHLY missing "startDates" array');
+  const len=m.startDates.length;
+
+  // Find each required field by fuzzy key match (case-insensitive, ignore CoV variants)
+  const findField=(keys,fieldName)=>{
+    for(const k of keys){
+      // Exact match first (non-CoV preferred)
+      if(m[k]!==undefined&&Array.isArray(m[k])&&!k.endsWith('CoV'))return m[k];
+    }
+    // Fallback: try CoV variant
+    for(const k of keys){
+      if(m[k]!==undefined&&Array.isArray(m[k]))return m[k];
+    }
+    return null;
+  };
+
+  // Map fields — try multiple key patterns
+  const impressions = findField(['impressions'],'impressions') || new Array(len).fill(0);
+  const clicks      = findField(['clicks'],'clicks')           || new Array(len).fill(0);
+  const spend       = findField(['spend','spendCoV'],'spend')  || new Array(len).fill(0);
+  // Prefer non-longTerm, non-CoV sales
+  const sales       = (() => {
+    // Try plain "sales" first
+    if(m.sales&&Array.isArray(m.sales)&&m.sales.length===len)return m.sales;
+    // Try salesCoV
+    if(m.salesCoV&&Array.isArray(m.salesCoV)&&m.salesCoV.length===len)return m.salesCoV;
+    // Fallback longTermSales
+    if(m.longTermSales&&Array.isArray(m.longTermSales))return m.longTermSales;
+    return new Array(len).fill(0);
+  })();
+  const orders      = findField(['orders'],'orders')           || new Array(len).fill(0);
+
+  // Validate lengths — warn but don't crash on mismatch, just truncate
+  const safeArr=(arr,name)=>{
+    if(!arr||!arr.length)return new Array(len).fill(0);
+    if(arr.length!==len)console.warn('JSON: '+name+' length mismatch ('+arr.length+' vs '+len+'), truncating');
+    return arr;
+  };
+
+  const imp2 =safeArr(impressions,'impressions');
+  const clk2 =safeArr(clicks,'clicks');
+  const sp2  =safeArr(spend,'spend');
+  const sl2  =safeArr(sales,'sales');
+  const ord2 =safeArr(orders,'orders');
+
+  // Build records — recalculate ALL metrics, never trust JSON-provided CTR/ACOS/ROAS
+  return Array.from({length:len},(_,i)=>({
+    date:        m.startDates[i],
+    monthKey:    (s=>{ const iso=String(s).match(/^(\d{4})-(\d{2})/); return iso?iso[1]+'-'+iso[2]:toMK(s); })(m.startDates[i]),
+    impressions: sN(imp2[i]),
+    clicks:      sN(clk2[i]),
+    spend:       sN(sp2[i]),
+    sales:       sN(sl2[i]),   // raw; CTR/CVR/ACOS recalculated in renderT1
+    orders:      sN(ord2[i])
+    // NOTE: ctr, acos, roas from JSON are intentionally ignored
+  })).filter(r=>r.monthKey); // drop rows with no valid date
+}
+function parseXLSX(wb){
+  const R={sp:{campaigns:[],adGroups:[],keywords:[],productTargeting:[],productAds:[],biddingAdj:[],searchTerms:[],negKeywords:[],negProductTargeting:[]},sb:{campaigns:[],keywords:[],productTargeting:[],searchTerms:[]},sd:{campaigns:[],productAds:[],contextual:[],audience:[]}};
+  const sType=sn=>{const n=nrm(sn);if(/sp.search.term|sp_search/i.test(n))return'sp_st';if(/sb.search.term|sb_search/i.test(n))return'sb_st';if(/sponsored.product|^sp\b|sp.bulk|sp.campaign/i.test(n))return'sp';if(/sponsored.brand|^sb\b|sb.bulk|sb.campaign/i.test(n))return'sb';if(/sponsored.display|^sd\b|sd.bulk|sd.campaign/i.test(n))return'sd';return null;};
+  wb.SheetNames.forEach(sn=>{
+    const st=sType(sn);if(!st)return;
+    const rows=XLSX.utils.sheet_to_json(wb.Sheets[sn],{defval:''});if(!rows.length)return;
+    if(st==='sp_st'){R.sp.searchTerms.push(...pST(rows));return;}
+    if(st==='sb_st'){R.sb.searchTerms.push(...pST(rows));return;}
+    // Track last seen campaign/adgroup names to fill blanks in child rows
+    let lastCamp='', lastAG='';
+    rows.forEach(row=>{
+      const vals=Object.values(row);
+      const ent=String(row['Entity']||row['entity']||vals[1]||'').trim().toLowerCase();
+      const baseRaw=bRow(row);
+      // If campaign/adgroup name is blank in child row, inherit from last seen parent
+      if(baseRaw.campaignName) lastCamp=baseRaw.campaignName;
+      else baseRaw.campaignName=lastCamp;
+      if(baseRaw.adGroupName) lastAG=baseRaw.adGroupName;
+      else baseRaw.adGroupName=lastAG;
+      const base=baseRaw;
+      if(ent==='campaign'){lastCamp=base.campaignName;lastAG='';}
+      if(ent==='ad group'){lastAG=base.adGroupName;}
+      if(st==='sp'){
+        if(ent==='campaign')R.sp.campaigns.push({...base,...cExt(row)});
+        else if(ent==='ad group')R.sp.adGroups.push({...base,defaultBid:sN(gf(row,['default bid']))});
+        else if(ent==='keyword')R.sp.keywords.push({...base,...kExt(row)});
+        else if(ent==='product targeting')R.sp.productTargeting.push({...base,...tExt(row)});
+        else if(ent==='product ad')R.sp.productAds.push({...base,...pExt(row)});
+        else if(ent==='bidding adjustment'){const seg=String(gf(row,['segment name','segment'])||'').trim();const rawP=String(gf(row,['placement','placement type'])||'').trim();const pl=rawP||seg||'Unknown';R.sp.biddingAdj.push({...base,placement:pl,segmentName:seg,percentage:sN(gf(row,['percentage','adjustment']))});}
+        else if(ent==='negative keyword')R.sp.negKeywords.push({...base,...kExt(row)});
+        else if(ent==='campaign negative keyword'){/* campaign-level, skip */}
+        else if(ent==='negative product targeting')R.sp.negProductTargeting.push({...base,...tExt(row)});
+      }else if(st==='sb'){
+        if(ent==='campaign')R.sb.campaigns.push({...base,...cExt(row)});
+        else if(ent==='keyword')R.sb.keywords.push({...base,...kExt(row)});
+        else if(ent==='product targeting')R.sb.productTargeting.push({...base,...tExt(row)});
+      }else if(st==='sd'){
+        if(ent==='campaign')R.sd.campaigns.push({...base,...cExt(row)});
+        else if(ent==='product ad')R.sd.productAds.push({...base,...pExt(row)});
+        else if(ent==='contextual targeting')R.sd.contextual.push({...base,...tExt(row)});
+        else if(ent==='audience targeting')R.sd.audience.push({...base,...tExt(row)});
+      }
+    });
+  });
+  return R;
+}
+function bRow(row){const g=ns=>gf(row,ns);return{campaignName:String(g(['campaign name'])||''),adGroupName:String(g(['ad group name'])||''),state:String(g(['state','status'])||'').toLowerCase(),impressions:sN(g(['impressions'])),clicks:sN(g(['clicks'])),spend:sN(g(['spend','cost'])),sales:sN(g(['14 day total sales','7 day total sales','total sales','sales'])),orders:sN(g(['14 day total orders','7 day total orders','total orders','orders']))};}
+function cExt(row){const g=ns=>gf(row,ns);return{dailyBudget:sN(g(['daily budget'])),biddingStrategy:String(g(['bidding strategy'])||'')};}
+function kExt(row){const g=ns=>gf(row,ns);return{keyword:String(g(['keyword text','keyword'])||''),matchType:String(g(['match type'])||''),bid:sN(g(['bid']))};}
+function tExt(row){const g=ns=>gf(row,ns);return{expression:String(g(['targeting expression','expression'])||''),expressionType:String(g(['expression type','targeting expression type'])||''),bid:sN(g(['bid']))};}
+function pExt(row){const g=ns=>gf(row,ns);return{asin:String(g(['asin'])||'').trim().toUpperCase(),sku:String(g(['sku'])||'')};}
+function pST(rows){return rows.map(row=>{const g=ns=>gf(row,ns);return{campaignName:String(g(['campaign name'])||''),adGroupName:String(g(['ad group name'])||''),searchTerm:String(g(['customer search term','search term'])||''),matchType:String(g(['match type'])||''),impressions:sN(g(['impressions'])),clicks:sN(g(['clicks'])),spend:sN(g(['spend','cost'])),sales:sN(g(['14 day total sales','7 day total sales','sales'])),orders:sN(g(['14 day total orders','7 day total orders','orders'])),asin:String(g(['advertised asin','asin'])||'').trim().toUpperCase()};}).filter(r=>r.searchTerm);}
+function parseBM(text){
+  const lines=text.split(/\r?\n/);
+  let brand='',month='',year='',hi=-1;
+
+  for(let i=0;i<Math.min(10,lines.length);i++){
+    const ln=lines[i];
+
+    // Brand=["Varibasics"] — exact Amazon format
+    const mBrand=ln.match(/Brand\s*=\s*\["?([^"\],\t]+)"?\]/i)
+                ||ln.match(/Brand\s*[,\t]\s*"?([^",\t\n\r\]]+)/i);
+    if(mBrand&&mBrand[1].trim()) brand=mBrand[1].trim();
+
+    // Select month=["March"] or month=["3"] or Month, March
+    const mMonth=ln.match(/month\s*=\s*\["?([^"\]\t]+)"?\]/i)
+                ||ln.match(/month\s*[,\t]\s*"?([^",\t\n\r\]]+)/i);
+    if(mMonth&&mMonth[1].trim()) month=mMonth[1].trim();
+
+    // Select year=["2026"] or year=["2026"]
+    const mYear=ln.match(/year\s*=\s*\["?([^"\]\t]+)"?\]/i)
+               ||ln.match(/year\s*[,\t]\s*"?([^",\t\n\r\]]+)/i);
+    if(mYear&&mYear[1].trim()) year=mYear[1].trim();
+
+    // Find header row — contains "Search Query" column
+    if(/search query/i.test(ln)&&!/Brand|Range|Select/i.test(ln)){hi=i;break;}
+    // Fallback: any line that looks like a data header
+    if(/search query/i.test(ln)){hi=i;break;}
+  }
+
+  if(hi<0) throw new Error('Cannot find header row with "Search Query"');
+
+  // Use fallback label if brand not found
+  if(!brand) brand='Unknown Brand';
+
+  const csv=lines.slice(hi).join('\n');
+  const parsed=Papa.parse(csv,{header:true,skipEmptyLines:true});
+
+  return parsed.data.map(row=>{
+    const g=ns=>gf(row,ns);
+    const query=String(g(['search query'])||'').trim();
+    if(!query||query.length<2) return null;
+    const r={
+      brand, month, year,
+      // Build label like "Varibasics — March 2026"
+      brandLabel: [brand, month, year].filter(Boolean).join(' '),
+      query,
+      volume:   sN(g(['search query volume'])),
+      impTotal: sN(g(['impressions: total count'])),
+      impShare: sP(g(['impressions: brand share','impression share'])),
+      clkTotal: sN(g(['clicks: total count'])),
+      clkShare: sP(g(['clicks: brand share','click share'])),
+      purTotal: sN(g(['purchases: total count'])),
+      purShare: sP(g(['purchases: brand share','purchase share']))
+    };
+    return{...r, ctr:dv(r.clkTotal,r.impTotal), cvr:dv(r.purTotal,r.clkTotal)};
+  }).filter(Boolean);
+}
+
+// ============================================================
+// PROCESS ALL
+// ============================================================
+async function processAll(){
+  el('goBtn').disabled=true;el('goBtn').textContent='\u23F3 Processing...';
+  const errs=[];
+  Object.values(S.charts).forEach(c=>{try{c.destroy();}catch(e){}});S.charts={};
+  S.t4AvgAcos=0.4;S.D={br:[],ap:[],mAds:[],ads:{sp:{campaigns:[],adGroups:[],keywords:[],productTargeting:[],productAds:[],biddingAdj:[],searchTerms:[]},sb:{campaigns:[],keywords:[],productTargeting:[],searchTerms:[]},sd:{campaigns:[],productAds:[],contextual:[],audience:[]}},bm:[]};
+
+  if(S.P.br){try{const t=await rTxt(S.P.br[0]);const p=Papa.parse(t,{header:true,skipEmptyLines:true});if(detCSV(p.meta.fields||[])==='BR'){S.D.br=parseBR(p.data);markSl('br',true,'\u2713 '+S.D.br.length+' rows');}else throw new Error('Headers \u2260 Business Report');}catch(e){errs.push('Business Report: '+e.message);markSl('br',false,e.message);}}
+  if(S.P.ap){try{
+    const t=await rTxt(S.P.ap[0]);
+    // ASIN Performance: scan for header row containing ASIN columns
+    // Headers may start at row 0 or row 1+ depending on export format
+    const lines=t.split(/\r?\n/);
+    let headerIdx=0;
+    for(let i=0;i<Math.min(10,lines.length);i++){
+      const lc=lines[i].toLowerCase();
+      if(lc.includes('(child) asin')||lc.includes('(parent) asin')||lc.includes('child asin')){
+        headerIdx=i;break;
+      }
+    }
+    const csvFromHeader=lines.slice(headerIdx).join('\n');
+    const p=Papa.parse(csvFromHeader,{header:true,skipEmptyLines:true,trimHeaders:true});
+    const fields=p.meta.fields||[];
+    // Validate: must have at least one ASIN column — no strict detCSV gate
+    const hasASIN=fields.some(f=>/(parent|child).*asin|asin/i.test(f));
+    if(!hasASIN) throw new Error('Cannot find ASIN column (found: '+fields.slice(0,4).join(', ')+')');
+    S.D.ap=parseAP(p.data);
+    markSl('ap',true,'\u2713 '+S.D.ap.length+' ASINs');
+  }catch(e){errs.push('ASIN Perf: '+e.message);markSl('ap',false,e.message);}}
+  // JSON: handle both file upload and direct paste
+  if(S.P.json||S.P.jsonPaste){
+    try{
+      const t = S.P.jsonPaste ? S.P.jsonPaste : await rTxt(S.P.json[0]);
+      S.D.mAds=parseJSONFile(t);
+      markSl('json',true,'\u2713 '+S.D.mAds.length+' months'+(S.P.jsonPaste?' (pasted)':''));
+    }catch(e){errs.push('JSON: '+e.message);markSl('json',false,e.message);}
+  }
+  if(S.P.ads){try{const buf=await rBuf(S.P.ads[0]);const wb=XLSX.read(buf,{type:'array'});S.D.ads=parseXLSX(wb);const tot=Object.values(S.D.ads).reduce((s,t)=>s+Object.values(t).reduce((ss,a)=>ss+(Array.isArray(a)?a.length:0),0),0);markSl('ads',true,'\u2713 '+tot+' entities \u00b7 '+wb.SheetNames.length+' sheets');}catch(e){errs.push('Ads XLSX: '+e.message);markSl('ads',false,e.message);}}
+  if(S.P.bm&&S.P.bm.length){S.D.bm=[];const be=[];for(const f of S.P.bm){try{S.D.bm.push(...parseBM(await rTxt(f)));}catch(e){be.push(f.name+': '+e.message);}}if(S.D.bm.length)markSl('bm',true,'\u2713 '+S.D.bm.length+' queries');else{markSl('bm',false,be[0]||'Error');errs.push(...be);}}
+
+  el('uploadErrors').innerHTML=errs.length?'<div class="alert alert-w mb16"><div class="alert-title">\u26A0\uFE0F Warnings</div>'+errs.map(e=>'<div class="alert-item">\u2022 '+esc(e)+'</div>').join('')+'</div>':'';
+
+  rT1();rT2();rT3();rT4();rT5();rT6();
+  const pts=[];if(S.D.br.length)pts.push('Business Report');if(S.D.ap.length)pts.push('ASIN');if(S.D.mAds.length)pts.push('Monthly Ads');if(S.D.bm.length)pts.push('Brand Metrics');
+  el('sDot').classList.add('ready');el('sTxt').textContent=pts.length?'Loaded: '+pts.join(', '):'Processed';
+  goTab('tab1',document.querySelector('.nav-item[onclick*="tab1"]'));
+  el('goBtn').disabled=false;el('goBtn').textContent='\u26A1 Process & Analyse';
+}
+function markSl(key,ok,msg){const s=el('slot-'+key),ss=el('ss-'+key);if(s)s.className='upload-slot '+(ok?'done':'error');if(ss){ss.className='slot-status '+(ok?'ok':'fail');ss.innerHTML=ok?msg:'\u2717 '+esc(msg);}}
+
+// ============================================================
+// TAB 1: EXECUTIVE
+// ============================================================
+function rT1(){
+  const br=S.D.br,ads=S.D.mAds;
+  if(!br.length&&!ads.length){htm('t1','<div class="empty-state"><span class="empty-icon">&#x1F4CA;</span><div class="empty-title">No data</div><div>Upload Business Report and/or JSON</div></div>');return;}
+  const M=new Map();
+  const mk=k=>{if(!M.has(k))M.set(k,{sales:0,orders:0,sessions:0,aS:0,aO:0,aSpend:0,aC:0,aI:0});return M.get(k);};
+  const brKeys=new Set(), adKeys=new Set();
+  br.forEach(r=>{if(!r.monthKey)return;brKeys.add(r.monthKey);const m=mk(r.monthKey);m.sales+=r.sales;m.orders+=r.orders;m.sessions+=r.sessions;});
+  ads.forEach(r=>{if(!r.monthKey)return;adKeys.add(r.monthKey);const m=mk(r.monthKey);m.aS+=r.sales;m.aO+=r.orders;m.aSpend+=r.spend;m.aC+=r.clicks;m.aI+=r.impressions;});
+
+  // --- Month alignment check ---
+  const brOnly=[...brKeys].filter(k=>!adKeys.has(k)).sort();
+  const adOnly=[...adKeys].filter(k=>!brKeys.has(k)).sort();
+  const bothHave=brKeys.size>0&&adKeys.size>0;
+  const mismatchWarn=(()=>{
+    if(!bothHave)return'';
+    const msgs=[];
+    if(brOnly.length)msgs.push('BR-only months (no ads data): '+brOnly.map(mLbl).join(', '));
+    if(adOnly.length)msgs.push('Ads-only months (no BR data): '+adOnly.map(mLbl).join(', '));
+    if(!msgs.length)return'';
+    return '<div class="alert alert-w" style="margin-bottom:16px;padding:10px 14px;"><strong>&#x26A0;&#xFE0F; Month Mismatch Detected</strong><div style="margin-top:4px;font-size:12px;">'+msgs.join('<br>')+'</div><div style="margin-top:4px;font-size:11px;color:var(--text2);">Months missing from one source will show $0 for that source. Verify both files cover the same date range.</div></div>';
+  })();
+
+  const sorted=[...M.keys()].sort();
+  // Cap to most recent 24 months; KPIs always show the full capped window
+  const truncated=sorted.length>24;
+  const mon=sorted.slice(-24).map(k=>({k,label:mLbl(k),...M.get(k)}));
+  const tot=mon.reduce((a,m)=>({sales:a.sales+m.sales,orders:a.orders+m.orders,sessions:a.sessions+m.sessions,aS:a.aS+m.aS,aO:a.aO+m.aO,aSpend:a.aSpend+m.aSpend,aC:a.aC+m.aC,aI:a.aI+m.aI}),{sales:0,orders:0,sessions:0,aS:0,aO:0,aSpend:0,aC:0,aI:0});
+  const orgS=tot.sales-tot.aS,orgO=tot.orders-tot.aO;
+  const ctr=dv(tot.aC,tot.aI),cvr=dv(tot.aO,tot.aC),acos=dv(tot.aSpend,tot.aS),tacos=dv(tot.aSpend,tot.sales);
+
+  const kpis=`<div class="kpi-grid">
+    <div class="kpi-card"><div class="kpi-label">Total Sales</div><div class="kpi-value">${fC(tot.sales)}</div><div class="kpi-sub">${mon.length} months${truncated?" (latest 24)":""}</div></div>
+    <div class="kpi-card g"><div class="kpi-label">Ad Sales</div><div class="kpi-value">${fC(tot.aS)}</div><div class="kpi-sub">${fP(dv(tot.aS,tot.sales))} of total</div></div>
+    <div class="kpi-card p"><div class="kpi-label">Organic Sales</div><div class="kpi-value">${fC(orgS)}</div><div class="kpi-sub">${fP(dv(orgS,tot.sales))} of total</div></div>
+    <div class="kpi-card pk"><div class="kpi-label">Total Orders</div><div class="kpi-value">${fN(tot.orders)}</div><div class="kpi-sub">Ad ${fN(tot.aO)} &middot; Org ${fN(orgO)}</div></div>
+    <div class="kpi-card"><div class="kpi-label">Sessions</div><div class="kpi-value">${fN(tot.sessions)}</div></div>
+    <div class="kpi-card g"><div class="kpi-label">Ad Spend</div><div class="kpi-value">${fC(tot.aSpend)}</div></div>
+    <div class="kpi-card p"><div class="kpi-label">CTR</div><div class="kpi-value">${fP(ctr)}</div><div class="kpi-sub">Clicks / Impressions</div></div>
+    <div class="kpi-card pk"><div class="kpi-label">CVR</div><div class="kpi-value">${fP(cvr)}</div><div class="kpi-sub">Orders / Clicks</div></div>
+    <div class="kpi-card y"><div class="kpi-label">ACOS</div><div class="kpi-value">${fP(acos)}</div><div class="kpi-sub">Spend / Ad Sales</div></div>
+    <div class="kpi-card r"><div class="kpi-label">TACOS</div><div class="kpi-value">${fP(tacos)}</div><div class="kpi-sub">Spend / Total Sales</div></div>
+  </div>`;
+  const charts=`${mismatchWarn}${truncated?'<div class="alert alert-i" style="margin-bottom:16px;padding:10px 14px;"><div>Showing most recent <strong>24 months</strong> ' + sorted.length + ' total months in data.</div></div>':''}<div class="chart-grid">
+    <div class="chart-card full"><div class="chart-title">&#x1F4C8; Sales Trend &mdash; Total vs Ad vs Organic</div><div class="chart-wrap"><canvas id="c1"></canvas></div></div>
+    <div class="chart-card"><div class="chart-title">&#x1F4CA; CTR vs CVR Trend</div><div class="chart-wrap"><canvas id="c2"></canvas></div></div>
+    <div class="chart-card"><div class="chart-title">&#x1F4B8; ACOS &amp; TACOS vs Spend</div><div class="chart-wrap"><canvas id="c3"></canvas></div></div>
+  </div>`;
+  // Build a map for quick lookup: all sorted months (pre-cap) for YOY/MOM lookups
+  const allMon=sorted.map(k=>({k,...M.get(k)}));
+  const monByKey=new Map(allMon.map(r=>[r.k,r]));
+
+  const shiftKey=(k,months)=>{
+    const [y,mo]=k.split('-').map(Number);
+    const d=new Date(y,mo-1+months,1);
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+  };
+
+  const pctCell=(curr,prev)=>{
+    if(prev==null||prev===0)return '<td class="td-mono" style="color:var(--text2);text-align:center;">—</td>';
+    const pct=(curr-prev)/prev;
+    const sign=pct>=0?'+':'';
+    const col=pct>=0.05?'#16a34a':pct<=-0.05?'#dc2626':'#6b7280';
+    const arrow=pct>=0.05?'&#9650;':pct<=-0.05?'&#9660;':'';
+    return '<td class="td-mono fw7" style="color:'+col+';text-align:right;">'+arrow+sign+(pct*100).toFixed(1)+'%</td>';
+  };
+
+  const trows=mon.map(m=>{
+    const prevMo=monByKey.get(shiftKey(m.k,-1));
+    const prevYr=monByKey.get(shiftKey(m.k,-12));
+    const orgS=m.sales-m.aS;
+    const prevOrgSMo=prevMo!=null?(prevMo.sales-prevMo.aS):null;
+    const prevOrgSYr=prevYr!=null?(prevYr.sales-prevYr.aS):null;
+    return '<tr>'
+      +'<td class="td-mono">'+esc(m.label)+'</td>'
+      +'<td class="td-mono">'+fC(m.sales)+'</td>'
+      +pctCell(m.sales,prevYr?prevYr.sales:null)+pctCell(m.sales,prevMo?prevMo.sales:null)
+      +'<td class="td-mono">'+fC(m.aS)+'</td>'
+      +pctCell(m.aS,prevYr?prevYr.aS:null)+pctCell(m.aS,prevMo?prevMo.aS:null)
+      +'<td class="td-mono">'+fC(orgS)+'</td>'
+      +pctCell(orgS,prevOrgSYr)+pctCell(orgS,prevOrgSMo)
+      +'<td class="td-mono">'+fN(m.orders)+'</td>'
+      +'<td class="td-mono">'+fN(m.aO)+'</td>'
+      +'<td class="td-mono">'+fN(m.sessions)+'</td>'
+      +'<td class="td-mono">'+fC(m.aSpend)+'</td>'
+      +pctCell(m.aSpend,prevYr?prevYr.aSpend:null)+pctCell(m.aSpend,prevMo?prevMo.aSpend:null)
+      +'<td class="td-mono">'+fP(dv(m.aC,m.aI))+'</td>'
+      +'<td class="td-mono">'+fP(dv(m.aO,m.aC))+'</td>'
+      +'<td class="td-mono">'+fP(dv(m.aSpend,m.aS))+'</td>'
+      +'<td class="td-mono">'+fP(dv(m.aSpend,m.sales))+'</td>'
+      +'</tr>';
+  }).join('');
+
+  const thGrp=l=>'<th colspan="3" style="text-align:center;border-left:2px solid var(--border);">'+l+'</th>';
+  const thYM='<th style="font-size:10px;color:var(--text2);font-weight:500;">YOY</th><th style="font-size:10px;color:var(--text2);font-weight:500;">MOM</th>';
+  const thMain=l=>'<th style="border-left:2px solid var(--border);">'+l+'</th>'+thYM;
+  const thead='<tr>'
+    +'<th rowspan="2">Month</th>'
+    +thGrp('Total Sales')+thGrp('Ad Sales')+thGrp('Organic Sales')
+    +'<th rowspan="2">Orders</th><th rowspan="2">Ad Orders</th><th rowspan="2">Sessions</th>'
+    +thGrp('Ad Spend')
+    +'<th rowspan="2">CTR</th><th rowspan="2">CVR</th><th rowspan="2">ACOS</th><th rowspan="2">TACOS</th>'
+    +'</tr><tr>'
+    +thMain('Total Sales')+thMain('Ad Sales')+thMain('Organic Sales')+thMain('Ad Spend')
+    +'</tr>';
+
+  htm('t1',kpis+charts+'<div class="section-head">Monthly Breakdown</div><div class="table-wrap"><table><thead>'+thead+'</thead><tbody>'+trows+'</tbody></table></div>');
+  requestAnimationFrame(()=>{
+    const labels=mon.map(m=>m.label);
+    const lc=(c,fill)=>({fill,tension:0.4,pointRadius:4,pointHoverRadius:6,borderWidth:2,borderColor:c,backgroundColor:c.replace('1)','0.12)'),pointBackgroundColor:c});
+    const bA='rgba(91,158,201,1)',gA='rgba(107,191,176,1)',pA='rgba(155,127,212,1)',pkA='rgba(217,125,166,1)',yA='rgba(200,168,0,1)';
+    const co=u=>({responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:'top',labels:{font:{size:11},boxWidth:12}}},scales:{x:{ticks:{font:{size:10}},grid:{color:'rgba(0,0,0,0.04)'}},y:{ticks:{font:{size:10},callback:v=>u==='$'?'$'+v.toLocaleString():v+u},grid:{color:'rgba(0,0,0,0.04)'}}}});
+    const c1=el('c1');if(c1)S.charts.c1=new Chart(c1,{type:'bar',data:{labels,datasets:[
+      {type:'line',label:'Total Sales',data:mon.map(m=>m.sales),...lc(bA,true),yAxisID:'y'},
+      {type:'line',label:'Ad Sales',data:mon.map(m=>m.aS),...lc(pkA,true),yAxisID:'y'},
+      {type:'line',label:'Organic Sales',data:mon.map(m=>m.sales-m.aS),...lc(gA,true),yAxisID:'y'},
+      {type:'bar',label:'Ad Spend',data:mon.map(m=>m.aSpend),backgroundColor:'rgba(200,168,0,0.35)',borderColor:'rgba(200,168,0,0.8)',borderWidth:1,borderRadius:3,yAxisID:'y1'}
+    ]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:'top',labels:{font:{size:11},boxWidth:12}}},scales:{y:{ticks:{callback:v=>'$'+v.toLocaleString(),font:{size:10}}},y1:{position:'right',ticks:{callback:v=>'$'+v.toLocaleString(),font:{size:10}},grid:{drawOnChartArea:false}}}}});
+    const c2=el('c2');if(c2)S.charts.c2=new Chart(c2,{type:'line',data:{labels,datasets:[{label:'CTR %',data:mon.map(m=>+(dv(m.aC,m.aI)*100).toFixed(3)),...lc(pA,true)},{label:'CVR %',data:mon.map(m=>+(dv(m.aO,m.aC)*100).toFixed(3)),...lc(gA,true)}]},options:co('%')});
+    const c3=el('c3');if(c3)S.charts.c3=new Chart(c3,{type:'line',data:{labels,datasets:[{label:'ACOS %',data:mon.map(m=>+(dv(m.aSpend,m.aS)*100).toFixed(2)),...lc(pkA,true),yAxisID:'y'},{label:'TACOS %',data:mon.map(m=>+(dv(m.aSpend,m.sales)*100).toFixed(2)),...lc(yA,true),yAxisID:'y'},{label:'Spend $',data:mon.map(m=>m.aSpend),...lc(bA,false),yAxisID:'y1'}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:'top',labels:{font:{size:11},boxWidth:12}}},scales:{y:{ticks:{callback:v=>v+'%',font:{size:10}}},y1:{position:'right',ticks:{callback:v=>'$'+v.toLocaleString(),font:{size:10}},grid:{drawOnChartArea:false}}}}});
+  });
+}
+
+// ============================================================
+// TAB 2: ASIN PERFORMANCE
+// ============================================================
+function rT2(){
+  const ap=S.D.ap;
+  if(!ap.length){htm('t2','<div class="empty-state"><span class="empty-icon">&#x1F4E6;</span><div class="empty-title">No ASIN data</div><div>Upload ASIN Performance CSV</div></div>');return;}
+  const ppc=new Map();
+  [...S.D.ads.sp.productAds,...S.D.ads.sd.productAds].forEach(ad=>{if(!ad.asin)return;const c=ppc.get(ad.asin)||{spend:0,sales:0,orders:0};c.spend+=ad.spend;c.sales+=ad.sales;c.orders+=ad.orders;ppc.set(ad.asin,c);});
+  const enr=ap.map(r=>{const p=ppc.get(r.childASIN)||{spend:0,sales:0,orders:0};return{...r,pS:p.spend,pSl:p.sales,pO:p.orders,tacos:dv(p.spend,r.sales)};});
+  const pMap=new Map();
+  enr.forEach(r=>{const k=r.parentASIN||r.childASIN;if(!pMap.has(k))pMap.set(k,{parentASIN:k,title:r.title,kids:[],sales:0,orders:0,sessions:0,pS:0,pSl:0});const p=pMap.get(k);p.sales+=r.sales;p.orders+=r.orders;p.sessions+=r.sessions;p.pS+=r.pS;p.pSl+=r.pSl;p.kids.push(r);});
+  const parents=[...pMap.values()].map(p=>({...p,tacos:dv(p.pS,p.sales)}));
+  let mode='parent';
+  const tbl=()=>{
+    const rows=(mode==='parent'?[...parents]:[...enr]).sort((a,b)=>b.sales-a.sales);
+    return'<div class="table-wrap"><table id="t2tbl_inner"><thead><tr><th>Product</th>'+(mode==='child'?'<th>Parent</th>':'')+'<th>Sales</th><th>Orders</th><th>Sessions</th><th>PPC Spend</th><th>PPC Sales</th><th>TACOS</th>'+(mode==='parent'?'<th>Variants</th>':'')+
+    '</tr></thead><tbody>'+rows.map(r=>{const asin=mode==='parent'?r.parentASIN:r.childASIN;const tc=r.tacos>0.3?'text-d':r.tacos>0.2?'text-w':'text-ok';return'<tr>'+asinCell(asin,r.title)+(mode==='child'?`<td class="td-mono" style="color:#1e6091;">${esc(r.parentASIN||'&#x2014;')}</td>`:'')+`<td class="td-mono">${fC(r.sales)}</td><td class="td-mono">${fN(r.orders)}</td><td class="td-mono">${fN(r.sessions)}</td><td class="td-mono">${fC(r.pS)}</td><td class="td-mono">${fC(r.pSl)}</td><td class="td-mono ${tc} fw7">${fP(r.tacos)}</td>`+(mode==='parent'?`<td class="td-mono text-m">${r.kids.length}</td>`:'')+`</tr>`;}).join('')+'</tbody></table></div>';
+  };
+  const mount=()=>{htm('t2',`<div class="table-controls mb16"><div class="toggle-row"><button class="toggle-btn ${mode==='parent'?'on':''}" onclick="t2m('parent')">Parent View</button><button class="toggle-btn ${mode==='child'?'on':''}" onclick="t2m('child')">Child View</button></div><span style="font-size:12px;color:var(--text2);margin-left:8px;">${mode==='parent'?parents.length+' parent ASINs':enr.length+' child ASINs'}</span></div><div id="t2tbl">${tbl()}</div>`);};
+  const applyT2Filters=()=>requestAnimationFrame(()=>{
+    const modeOffset=mode==='child'?1:0;
+    addColFilter('t2tbl_inner',1+modeOffset,'Sales');
+    // Add TACOS bucket filter on last value col
+    const t=el('t2tbl_inner');
+    if(t){const lastIdx=mode==='parent'?7:6;addColFilter('t2tbl_inner',lastIdx,'TACOS');}
+  });
+  window.t2m=m=>{mode=m;mount();applyT2Filters();};
+  mount();applyT2Filters();
+}
+
+// ============================================================
+
+// ============================================================
+// HELPERS
+// ============================================================
+function mkTbl(cols,rows,opts){
+  const id=opts&&opts.id?opts.id:('tbl_'+Math.random().toString(36).slice(2,7));
+  const sid='s_'+id;
+  let h='';
+  if(opts&&opts.search){
+    h+=`<div class="table-controls mb16"><input class="tbl-search" id="${sid}" placeholder="${esc(opts.pl||'Filter...')}" oninput="tF('${id}','${sid}')">${opts.extra||''}</div>`;
+  }
+  h+=`<div class="table-wrap"><table id="${id}"><thead><tr>${cols.map(c=>'<th>'+esc(c)+'</th>').join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
+  return h;
+}
+function tF(tableId,searchId){
+  const q=el(searchId).value.toLowerCase();
+  const t=el(tableId);if(!t)return;
+  Array.from(t.querySelectorAll('tbody tr')).forEach(r=>{
+    r.style.display=(!q||r.dataset.search.includes(q))?'':'none';
+  });
+}
+// Column filter helper — adds a <select> dropdown to a column header
+// Usage: addColFilter(tableId, colIndex, label) after table is in DOM
+function addColFilter(tableId,colIdx,label){
+  const t=el(tableId);if(!t)return;
+  const vals=new Set();
+  Array.from(t.querySelectorAll('tbody tr')).forEach(r=>{
+    const cell=r.cells[colIdx];if(cell)vals.add(cell.textContent.trim());
+  });
+  if(vals.size<2)return;
+  const th=t.querySelector('thead tr:last-child th:nth-child('+(colIdx+1)+')');
+  if(!th)return;
+  const sid='cf_'+tableId+'_'+colIdx;
+  const sel=document.createElement('select');
+  sel.id=sid;sel.style.cssText='font-size:10px;margin-top:3px;width:100%;border:1px solid var(--border2);border-radius:4px;padding:1px 2px;background:#fff;color:var(--text);';
+  sel.innerHTML='<option value="">All</option>'+[...vals].sort().map(v=>'<option>'+v+'</option>').join('');
+  sel.onchange=()=>{
+    const q=sel.value.toLowerCase();
+    Array.from(t.querySelectorAll('tbody tr')).forEach(r=>{
+      const cell=r.cells[colIdx];
+      const match=!q||((cell?cell.textContent.trim().toLowerCase():'')).includes(q);
+      // Also respect existing search filter
+      r.dataset.cfHide=match?'':'1';
+      if(!match)r.style.display='none';
+      else if(!r.dataset.search||r.dataset.search.includes(el('s_'+tableId)?.value?.toLowerCase()||''))r.style.display='';
+    });
+  };
+  th.style.verticalAlign='top';
+  th.appendChild(document.createElement('br'));
+  th.appendChild(sel);
+}
+function acosColor(a){return a>0.9?'text-d':a>0.5?'text-w':a>0?'text-ok':'';}
+function stateBadge(s){return`<span class="badge ${s==='enabled'?'b-en':'b-pa'}">${esc(s||'—')}</span>`;}
+
+// ============================================================
+// TAB 3: PPC PERFORMANCE OVERVIEW
+// ============================================================
+function rT3(){
+  const ads=S.D.ads;
+  const hasAny=ads.sp.campaigns.length||ads.sb.campaigns.length||ads.sd.campaigns.length;
+  if(!hasAny){htm('t3','<div class="empty-state"><span class="empty-icon">&#x1F4B0;</span><div class="empty-title">No PPC data</div><div>Upload Amazon Ads Bulk XLSX</div></div>');return;}
+
+  // BIDDING ADJUSTMENT AGGREGATION
+  // Placement name normalization + desired display order
+  const plLabel=raw=>{
+    const r=(raw||'').toLowerCase().trim();
+    if(/top.of.search|placement.top|PLACEMENT_TOP/i.test(raw))return'Top of Search';
+    if(/rest.of.search|other|PLACEMENT_REST/i.test(raw))return'Rest of Search';
+    if(/product.page|detail.page|PLACEMENT_PRODUCT/i.test(raw))return'Product Pages';
+    if(/amazon.business|SITE_AMAZON_BUSINESS/i.test(raw))return'Amazon Business';
+    if(!raw||raw==='Unknown')return'Other';
+    return raw;
+  };
+  const PL_ORDER=['Top of Search','Rest of Search','Product Pages','Amazon Business','Other'];
+  const baMap=new Map();
+  ads.sp.biddingAdj.forEach(a=>{
+    const rawKey=a.placement||a.segmentName||'';
+    const label=plLabel(rawKey)||plLabel(a.segmentName||'')||'Other';
+    const c=baMap.get(label)||{placement:label,impressions:0,clicks:0,spend:0,sales:0,orders:0,count:0};
+    c.impressions+=a.impressions;c.clicks+=a.clicks;c.spend+=a.spend;c.sales+=a.sales;c.orders+=a.orders;c.count++;
+    baMap.set(label,c);
+  });
+  const baRows=[...baMap.values()].sort((a,b)=>{
+    const ai=PL_ORDER.indexOf(a.placement),bi=PL_ORDER.indexOf(b.placement);
+    return(ai<0?99:ai)-(bi<0?99:bi);
+  });
+
+  // AD TYPE AGGREGATION
+  const agg=type=>{
+    const camps=ads[type].campaigns;
+    return camps.reduce((a,c)=>({spend:a.spend+c.spend,sales:a.sales+c.sales,orders:a.orders+c.orders,clicks:a.clicks+c.clicks,impressions:a.impressions+c.impressions,campaigns:a.campaigns+1}),{spend:0,sales:0,orders:0,clicks:0,impressions:0,campaigns:0});
+  };
+  const spA=agg('sp'),sbA=agg('sb'),sdA=agg('sd');
+  const tSpend=spA.spend+sbA.spend+sdA.spend,tSales=spA.sales+sbA.sales+sdA.sales;
+  const tOrders=spA.orders+sbA.orders+sdA.orders,tClicks=spA.clicks+sbA.clicks+sdA.clicks;
+  const tImpr=spA.impressions+sbA.impressions+sdA.impressions;
+
+  // ALL CAMPAIGNS
+  const allC=[
+    ...ads.sp.campaigns.map(c=>({...c,adType:'SP'})),
+    ...ads.sb.campaigns.map(c=>({...c,adType:'SB'})),
+    ...ads.sd.campaigns.map(c=>({...c,adType:'SD'}))
+  ];
+
+  // TOP 10 PERFORMING (by sales)
+  const top10=[...allC].filter(c=>c.sales>0).sort((a,b)=>b.sales-a.sales).slice(0,10);
+  // TOP 10 WASTED (high ACOS or spend with 0 orders)
+  const waste10=[...allC].filter(c=>(c.spend>50&&c.orders===0)||(dv(c.spend,c.sales)>0.9&&c.clicks>20)).sort((a,b)=>b.spend-a.spend).slice(0,10);
+  // LOW IMPRESSIONS (enabled, <500 impr)
+  const lowI=[...allC].filter(c=>c.impressions>0&&c.impressions<500&&c.state==='enabled').sort((a,b)=>a.impressions-b.impressions).slice(0,10);
+
+  // AUTO/BROAD NEGATIVE CHECK
+  const autoBroad=ads.sp.campaigns.filter(c=>/auto|broad/i.test(c.campaignName));
+  // Ad-group level negatives only (not campaign-level), per user spec
+  const negKws=ads.sp.negKeywords;
+  const negTgt=ads.sp.negProductTargeting;
+  const totalNegs=negKws.length+negTgt.length;
+  // Multi-ASIN wasted spend: campaigns in auto/broad with 2+ advertised ASINs and overall 0 orders
+  const autoBroadNames=new Set(autoBroad.map(c=>c.campaignName));
+  const campAsinMap=new Map();
+  ads.sp.productAds.forEach(a=>{
+    if(!autoBroadNames.has(a.campaignName))return;
+    if(!campAsinMap.has(a.campaignName))campAsinMap.set(a.campaignName,{asins:new Set(),spend:0,clicks:0,orders:0});
+    const c=campAsinMap.get(a.campaignName);
+    if(a.asin)c.asins.add(a.asin);
+    c.spend+=a.spend;c.clicks+=a.clicks;c.orders+=a.orders;
+  });
+  const multiAsinWaste=[...campAsinMap.entries()]
+    .filter(([,v])=>v.asins.size>1&&v.orders===0&&v.spend>10)
+    .map(([camp,v])=>({campaignName:camp,asinCount:v.asins.size,asins:[...v.asins],spend:v.spend,clicks:v.clicks,orders:0}))
+    .sort((a,b)=>b.spend-a.spend).slice(0,20);
+  // Single ASIN wasted (original check)
+  const asinWaste=ads.sp.productAds.filter(a=>autoBroadNames.has(a.campaignName)&&a.clicks>20&&a.orders===0).slice(0,20);
+
+  const typeRow=(label,d,cls)=>`<tr>
+    <td><span class="badge ${cls}">${label}</span></td>
+    <td class="td-mono fw7">${fC(d.spend)}</td><td class="td-mono">${fP(dv(d.spend,tSpend))}</td>
+    <td class="td-mono">${fC(d.sales)}</td><td class="td-mono">${fP(dv(d.sales,tSales))}</td>
+    <td class="td-mono">${fN(d.orders)}</td><td class="td-mono">${fN(d.impressions)}</td><td class="td-mono">${fN(d.clicks)}</td>
+    <td class="td-mono ${acosColor(dv(d.spend,d.sales))} fw7">${fP(dv(d.spend,d.sales))}</td>
+    <td class="td-mono">${fC(dv(d.spend,d.clicks))}</td>
+    <td class="td-mono">${dv(d.sales,d.spend).toFixed(2)}x</td>
+    <td class="td-mono text-m">${d.campaigns}</td>
+  </tr>`;
+
+  const campRow=c=>{
+    const acos=dv(c.spend,c.sales),roas=dv(c.sales,c.spend),cpc=dv(c.spend,c.clicks);
+    const isW=(c.spend>50&&c.orders===0)||(acos>0.9&&c.clicks>20);
+    return`<tr data-search="${esc((c.campaignName+' '+c.adType).toLowerCase())}" ${isW?'style="background:rgba(252,165,165,0.06)"':''}>
+      <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;font-size:12px;" title="${esc(c.campaignName)}">${esc(c.campaignName)}</td>
+      <td><span class="badge ${c.adType==='SP'?'b-sp':c.adType==='SB'?'b-sb':'b-sd'}">${c.adType}</span></td>
+      <td>${stateBadge(c.state)}</td>
+      <td class="td-mono">${fC(c.spend)}</td><td class="td-mono">${fC(c.sales)}</td>
+      <td class="td-mono">${fN(c.orders)}</td><td class="td-mono">${fN(c.impressions)}</td><td class="td-mono">${fN(c.clicks)}</td>
+      <td class="td-mono ${acosColor(acos)} fw7">${c.sales>0?fP(acos):'—'}</td>
+      <td class="td-mono">${roas>0?roas.toFixed(2)+'x':'—'}</td>
+      <td class="td-mono">${fC(cpc)}</td>
+    </tr>`;
+  };
+
+  const campCols=['Campaign','Type','State','Spend','Sales','Orders','Impr.','Clicks','ACOS','ROAS','CPC'];
+
+  const baSection=baRows.length
+    ?`<div class="section-head">Placement Performance (Bidding Adjustments)</div>
+       <p style="font-size:12px;color:var(--text2);margin-bottom:10px;">Aggregated from Column B entity "Bidding Adjustment" — placement column</p>
+       <div class="table-wrap mb16"><table><thead><tr><th>Placement</th><th>Spend</th><th>Sales</th><th>Orders</th><th>Impr.</th><th>Clicks</th><th>ACOS</th><th>CPC</th><th>ROAS</th><th>Count</th></tr></thead><tbody>
+       ${baRows.map(r=>{const ac=dv(r.spend,r.sales),ro=dv(r.sales,r.spend);return`<tr>
+         <td class="fw7">${esc(r.placement)}</td>
+         <td class="td-mono">${fC(r.spend)}</td><td class="td-mono">${fC(r.sales)}</td><td class="td-mono">${fN(r.orders)}</td>
+         <td class="td-mono">${fN(r.impressions)}</td><td class="td-mono">${fN(r.clicks)}</td>
+         <td class="td-mono ${acosColor(ac)} fw7">${r.sales>0?fP(ac):'—'}</td>
+         <td class="td-mono">${fC(dv(r.spend,r.clicks))}</td>
+         <td class="td-mono">${ro>0?ro.toFixed(2)+'x':'—'}</td>
+         <td class="td-mono text-m">${r.count}</td>
+       </tr>`;}).join('')}
+       </tbody></table></div>`
+    :`<div class="alert alert-i mb16"><div>No bidding adjustment data found in bulk file.</div></div>`;
+
+  const negSection=autoBroad.length
+    ?'<div class="section-head">Auto &amp; Broad — Negative Keyword Check</div>'
+     +'<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px;">'
+       +'<div class="kpi-card"><div class="kpi-label">Auto/Broad Campaigns</div><div class="kpi-value">'+autoBroad.length+'</div></div>'
+       +'<div class="kpi-card '+(totalNegs?'g':'r')+'"><div class="kpi-label">Neg. Keywords (Ad Group)</div><div class="kpi-value">'+negKws.length+'</div><div class="kpi-sub">'+(negKws.length?'Present':'None detected')+'</div></div>'
+       +'<div class="kpi-card '+(negTgt.length?'g':'r')+'"><div class="kpi-label">Neg. Product Targeting</div><div class="kpi-value">'+negTgt.length+'</div><div class="kpi-sub">'+(negTgt.length?'Present':'None detected')+'</div></div>'
+       +'<div class="kpi-card '+(multiAsinWaste.length?'r':'g')+'"><div class="kpi-label">Multi-ASIN Wasted Campaigns</div><div class="kpi-value">'+multiAsinWaste.length+'</div><div class="kpi-sub">2+ ASINs, 0 orders</div></div>'
+     +'</div>'
+     +(multiAsinWaste.length
+       ?'<div class="alert alert-w mb16"><div class="alert-title">&#x26A0;&#xFE0F; '+multiAsinWaste.length+' Auto/Broad campaigns with multiple advertised ASINs and 0 orders</div></div>'
+        +'<div class="table-wrap mb16"><table><thead><tr><th>Campaign</th><th>ASINs</th><th>Spend</th><th>Clicks</th><th>Orders</th></tr></thead><tbody>'
+        +multiAsinWaste.map(r=>'<tr>'
+          +'<td style="font-size:11px;max-width:240px;overflow:hidden;text-overflow:ellipsis;" title="'+esc(r.campaignName)+'">'+esc(r.campaignName)+'</td>'
+          +'<td class="td-mono" title="'+esc(r.asins.join(', '))+'">'+r.asinCount+' ASINs</td>'
+          +'<td class="td-mono text-d">'+fC(r.spend)+'</td>'
+          +'<td class="td-mono">'+fN(r.clicks)+'</td>'
+          +'<td class="td-mono fw7">0</td>'
+          +'</tr>').join('')
+        +'</tbody></table></div>'
+       :'')
+    :'';
+
+  htm('t3',`
+    <div class="kpi-grid">
+      <div class="kpi-card"><div class="kpi-label">Total Spend</div><div class="kpi-value">${fC(tSpend)}</div></div>
+      <div class="kpi-card g"><div class="kpi-label">Total Sales</div><div class="kpi-value">${fC(tSales)}</div></div>
+      <div class="kpi-card p"><div class="kpi-label">Total Orders</div><div class="kpi-value">${fN(tOrders)}</div></div>
+      <div class="kpi-card y"><div class="kpi-label">Overall ACOS</div><div class="kpi-value">${fP(dv(tSpend,tSales))}</div></div>
+      <div class="kpi-card pk"><div class="kpi-label">Overall ROAS</div><div class="kpi-value">${dv(tSales,tSpend).toFixed(2)}x</div></div>
+      <div class="kpi-card"><div class="kpi-label">Impressions</div><div class="kpi-value">${fN(tImpr)}</div></div>
+    </div>
+
+    <div class="section-head">Ad Type Performance Summary</div>
+    <div class="table-wrap mb16"><table>
+      <thead><tr><th>Type</th><th>Spend</th><th>Spend%</th><th>Sales</th><th>Sales%</th><th>Orders</th><th>Impressions</th><th>Clicks</th><th>ACOS</th><th>CPC</th><th>ROAS</th><th>Campaigns</th></tr></thead>
+      <tbody>
+        ${typeRow('SP',spA,'b-sp')}${typeRow('SB',sbA,'b-sb')}${typeRow('SD',sdA,'b-sd')}
+        <tr style="background:rgba(167,199,231,0.1);font-weight:700;">
+          <td>Total</td>
+          <td class="td-mono">${fC(tSpend)}</td><td>—</td><td class="td-mono">${fC(tSales)}</td><td>—</td>
+          <td class="td-mono">${fN(tOrders)}</td><td class="td-mono">${fN(tImpr)}</td><td class="td-mono">${fN(tClicks)}</td>
+          <td class="td-mono ${acosColor(dv(tSpend,tSales))} fw7">${fP(dv(tSpend,tSales))}</td>
+          <td class="td-mono">${fC(dv(tSpend,tClicks))}</td>
+          <td class="td-mono">${dv(tSales,tSpend).toFixed(2)}x</td>
+          <td class="td-mono text-m">${allC.length}</td>
+        </tr>
+      </tbody>
+    </table></div>
+
+    ${baSection}
+
+    <div class="section-head">&#x1F3C6; Top 10 Performing Campaigns (by Sales)</div>
+    ${mkTbl(campCols,top10.map(campRow).join(''),{search:true,pl:'Filter campaigns...',id:'tbl_top10'})}
+
+    <div class="section-head">&#x1F6B8; Top 10 Wasted Spend Campaigns</div>
+    <p style="font-size:12px;color:var(--text2);margin-bottom:10px;">High ACOS (&gt;90%) or spend with 0 orders</p>
+    ${waste10.length?mkTbl(campCols,waste10.map(campRow).join(''),{search:true,pl:'Filter...',id:'tbl_waste'}):'<div class="alert alert-ok mb16"><div>No wasted spend campaigns detected.</div></div>'}
+
+    <div class="section-head">&#x1F4C9; Low Impression Campaigns (&lt;500, Enabled)</div>
+    ${lowI.length?mkTbl(campCols,lowI.map(campRow).join(''),{search:false,id:'tbl_lowc'}):'<div class="alert alert-ok mb16"><div>No low-impression enabled campaigns.</div></div>'}
+
+    ${negSection}
+  `);
+}
+
+// ============================================================
+// TAB 4: SEARCH TERM ANALYSIS
+// ============================================================
+function rT4(){
+  const spST=S.D.ads.sp.searchTerms,sbST=S.D.ads.sb.searchTerms;
+  if(!spST.length&&!sbST.length){htm('t4','<div class="empty-state"><span class="empty-icon">&#x1F50D;</span><div class="empty-title">No search term data</div><div>SP/SB search term sheets in the Ads Bulk XLSX</div></div>');return;}
+  const ap=S.D.ap,totS=ap.reduce((s,r)=>s+r.sales,0),totO=ap.reduce((s,r)=>s+r.orders,0),aov=dv(totS,totO)||25;
+  let stType='sp',stW=false;
+
+  // Aggregate rows by search term across campaigns so the same term isn't double-counted
+  const MT_ORDER=['broad','phrase','exact','auto'];
+  const aggregate=rows=>{
+    const map=new Map();
+    rows.forEach(r=>{
+      const key=r.searchTerm.toLowerCase().trim();
+      if(!map.has(key))map.set(key,{searchTerm:r.searchTerm,freq:0,targeted:new Set(),impressions:0,clicks:0,spend:0,sales:0,orders:0,asin:r.asin||''});
+      const a=map.get(key);
+      a.freq++;
+      a.impressions+=r.impressions||0;
+      a.clicks+=r.clicks||0;
+      a.spend+=r.spend||0;
+      a.sales+=r.sales||0;
+      a.orders+=r.orders||0;
+      // Track which match types this term is actively targeted in
+      if(r.matchType){const mt=r.matchType.toLowerCase().trim();a.targeted.add(mt);}
+      if(r.asin&&!a.asin)a.asin=r.asin;
+    });
+    // Convert targeted set to sorted array: broad > phrase > exact > other
+    return[...map.values()].map(a=>({...a,targeted:[...a.targeted].sort((x,y)=>{ const xi=MT_ORDER.indexOf(x),yi=MT_ORDER.indexOf(y);return(xi<0?99:xi)-(yi<0?99:yi);})}));
+  };
+
+  // Action tag logic
+  const getAction=r=>{
+    const acos=dv(r.spend,r.sales);
+    const avgAcos=S.t4AvgAcos||0.4; // fallback 40%
+    const highAcos=acos>avgAcos*1.5&&r.sales>0;
+    const noOrder=r.orders===0&&r.spend>aov*0.3;
+    if(noOrder||highAcos){
+      if(r.orders>3&&highAcos)return{label:'Isolate',cls:'b-df',tip:'High orders but high ACOS — move to own campaign to control bids'};
+      if(noOrder)return{label:'Potential Negative',cls:'b-ps',tip:'High spend, no orders — add as negative keyword'};
+      return{label:'Potential Negative',cls:'b-ps',tip:'Low orders, high ACOS — consider negating or reducing bid'};
+    }
+    return null;
+  };
+
+  const terms=()=>stType==='sp'?spST:sbST;
+
+  const getRows=()=>{
+    const agg=aggregate(terms());
+    // Compute avg ACOS from terms that have sales — used for high-ACOS threshold
+    const withSales=agg.filter(r=>r.sales>0&&r.spend>0);
+    S.t4AvgAcos=withSales.length?withSales.reduce((s,r)=>s+dv(r.spend,r.sales),0)/withSales.length:0.4;
+    let t=agg;
+    if(stW){
+      const avgA=S.t4AvgAcos;
+      t=t.filter(r=>{
+        const acos=dv(r.spend,r.sales);
+        const highAcos=r.sales>0&&acos>avgA*1.5;
+        const noOrder=r.orders===0&&r.spend>aov*0.3&&r.clicks>20;
+        return highAcos||noOrder;
+      });
+    }
+    return[...t].sort((a,b)=>b.spend-a.spend);
+  };
+
+  // Match type badge colours
+  const mtCls={broad:'b-op',phrase:'b-ui',exact:'b-dm',auto:'b-n'};
+  const mtBadge=mt=>'<span class="badge '+(mtCls[mt]||'b-n')+'" style="margin-right:2px;font-size:10px;">'+esc(mt)+'</span>';
+
+  const renderRows=()=>getRows().map(t=>{
+    const ctr=dv(t.clicks,t.impressions),cvr=dv(t.orders,t.clicks),acos=dv(t.spend,t.sales);
+    const action=getAction(t);
+    const targetedHtml=t.targeted&&t.targeted.length?t.targeted.map(mtBadge).join(''):'<span style="color:var(--text2);font-size:11px;">—</span>';
+    const rowBg=action?'style="background:rgba(252,165,165,0.06)"':'';
+    return '<tr '+rowBg+' data-search="'+esc((t.searchTerm+' '+(t.targeted||[]).join(' ')).toLowerCase())+'">'
+      +'<td style="font-size:12px;max-width:220px;overflow:hidden;text-overflow:ellipsis;" title="'+esc(t.searchTerm)+'">'+esc(t.searchTerm)+'</td>'
+      +'<td class="td-mono" style="text-align:center;">'+t.freq+'</td>'
+      +'<td style="white-space:nowrap;">'+targetedHtml+'</td>'
+      +(t.asin?asinCell(t.asin,''):'<td>—</td>')
+      +'<td class="td-mono">'+fN(t.impressions)+'</td>'
+      +'<td class="td-mono">'+fN(t.clicks)+'</td>'
+      +'<td class="td-mono">'+fC(t.spend)+'</td>'
+      +'<td class="td-mono">'+fC(t.sales)+'</td>'
+      +'<td class="td-mono">'+fN(t.orders)+'</td>'
+      +'<td class="td-mono">'+fP(ctr)+'</td>'
+      +'<td class="td-mono">'+fP(cvr)+'</td>'
+      +'<td class="td-mono '+acosColor(acos)+' fw7">'+(t.sales>0?fP(acos):'—')+'</td>'
+      +'<td>'+(action?'<span class="badge '+action.cls+'" title="'+esc(action.tip)+'">'+esc(action.label)+'</span>':'—')+'</td>'
+      +'</tr>';
+  }).join('');
+
+  const mount=()=>{
+    const agg=aggregate(terms());
+    const avgA=S.t4AvgAcos||0.4;
+    const w=agg.filter(r=>{
+      const acos=dv(r.spend,r.sales);
+      const highAcos=r.sales>0&&acos>avgA*1.5;
+      const noOrder=r.orders===0&&r.spend>aov*0.3&&r.clicks>20;
+      return highAcos||noOrder;
+    });
+    const wCounts={isolate:0,neg:0};
+    w.forEach(r=>{const a=getAction(r);if(a)a.label==='Isolate'?wCounts.isolate++:wCounts.neg++;});
+    const banner=w.length&&!stW?'<div class="alert alert-w mb16"><div class="alert-title">&#x1F4B8; '+w.length+' Terms need attention — '+wCounts.isolate+' to isolate, '+wCounts.neg+' potential negatives</div></div>':'';
+    const spBtn='<button class="toggle-btn '+(stType==='sp'?'on':'')+'" onclick="t4sw(this,&quot;sp&quot;)">SP</button>';
+    const sbBtn='<button class="toggle-btn '+(stType==='sb'?'on':'')+'" onclick="t4sw(this,&quot;sb&quot;)">SB</button>';
+    const wBtn='<button class="pill '+(stW?'don':'')+'" onclick="t4wToggle()">&#x26A0; Needs Action ('+w.length+')</button>';
+    const info='<span style="font-size:12px;color:var(--text2);">AOV: '+fC(aov)+' · High ACOS threshold: '+fP((S.t4AvgAcos||0.4)*1.5)+'</span>';
+    htm('t4', banner
+      +'<div class="table-controls mb16">'
+        +'<div class="toggle-row">'+spBtn+sbBtn+'</div>'
+        +'<input class="tbl-search" id="t4srch" placeholder="Search term, match type..." oninput="tF(&quot;t4tbl&quot;,&quot;t4srch&quot;)">'
+        +wBtn+info
+      +'</div>'
+      +'<div class="table-wrap"><table id="t4tbl"><thead><tr>'
+        +'<th>Search Term</th><th>Freq</th><th>Targeted In</th><th>ASIN</th>'
+        +'<th>Impr.</th><th>Clicks</th><th>Spend</th><th>Sales</th><th>Orders</th>'
+        +'<th>CTR</th><th>CVR</th><th>ACOS</th><th>Action</th>'
+      +'</tr></thead><tbody>'+renderRows()+'</tbody></table></div>');
+  }
+  const applyT4Filters=()=>requestAnimationFrame(()=>{
+    // Col indices: 0=SearchTerm, 1=Freq, 2=TargetedIn, 3=ASIN, 4=Impr, 5=Clicks, 6=Spend, 7=Sales, 8=Orders, 9=CTR, 10=CVR, 11=ACOS, 12=Action
+    addColFilter('t4tbl',12,'Action');
+    addColFilter('t4tbl',2,'Targeted In');
+  });
+  window.t4sw=(_,v)=>{stType=v;mount();applyT4Filters();};
+  window.t4wToggle=()=>{stW=!stW;mount();applyT4Filters();};
+  mount();applyT4Filters();
+}
+
+// ============================================================
+// TAB 5: BRAND METRICS + SIGNALS
+// ============================================================
+function rT5(){
+  const bm=S.D.bm;
+  if(!bm.length){htm('t5','<div class="empty-state"><span class="empty-icon">&#x1F4C8;</span><div class="empty-title">No Brand Metrics</div><div>Upload one or more Brand Metrics CSVs (one per brand or period)</div></div>');return;}
+  const spMap=new Map();
+  S.D.ads.sp.searchTerms.forEach(t=>{const k=t.searchTerm.toLowerCase().trim();const c=spMap.get(k)||{spend:0,sales:0,orders:0};c.spend+=t.spend;c.sales+=t.sales;c.orders+=t.orders;spMap.set(k,c);});
+  const enr=bm.map(r=>{
+    const k=r.query.toLowerCase().trim();const sp=spMap.get(k)||{spend:0,sales:0,orders:0};const isTgt=sp.spend>0;
+    let sig=null;
+    if(r.volume>500&&r.purShare<0.2&&!isTgt)sig='op';
+    else if(r.volume>200&&sp.spend<20&&sp.orders>0)sig='ui';
+    else if(sp.spend>50&&sp.orders===0)sig='in';
+    else if(r.purShare>0.5)sig='dm';
+    else if(r.purShare<0.1&&isTgt)sig='df';
+    return{...r,spSpend:sp.spend,spSales:sp.sales,spOrders:sp.orders,isTgt,sig};
+  });
+
+  // Unique brand names for the brand filter dropdown
+  const brandNames=[...new Set(enr.map(r=>r.brand).filter(Boolean))].sort();
+  // Unique brand+period labels for showing how many reports loaded
+  const brandLabels=[...new Set(enr.map(r=>r.brandLabel||r.brand))].filter(Boolean).sort();
+
+  const sigC=enr.reduce((a,r)=>{if(r.sig)a[r.sig]=(a[r.sig]||0)+1;return a;},{});
+  const sBadge=sig=>{
+    const m={op:['b-op','&#x1F680; High Opportunity'],ui:['b-ui','&#x1F4C8; Underinvested'],in:['b-in','&#x26A0;&#xFE0F; Inefficient'],dm:['b-dm','&#x1F451; Dominant'],df:['b-df','&#x1F6E1;&#xFE0F; Defensive Gap']};
+    if(!sig)return'--';const[cls,lbl]=m[sig]||['',''];return'<span class="badge '+cls+'">'+lbl+'</span>';
+  };
+
+  let bF='all', sF='all';
+
+  const filtered=()=>enr.filter(r=>{
+    // Brand filter: by brand name only so all periods for that brand show together
+    const b=bF==='all'||r.brand===bF;
+    const f=sF==='all'||r.sig===sF||(sF==='nt'&&!r.isTgt)||(sF==='hv'&&r.volume>500)||(sF==='ls'&&r.purShare<0.2);
+    return b&&f;
+  });
+
+  const rows=()=>filtered().map(r=>{
+    const periodDisplay=[r.month,r.year].filter(Boolean).join(' ');
+    return'<tr data-search="'+esc((r.query+' '+r.brand+' '+periodDisplay).toLowerCase())+'">'
+      +'<td style="font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;" title="'+esc(r.query)+'">'+esc(r.query)+'</td>'
+      +'<td style="font-size:12px;line-height:1.3;white-space:nowrap;">'
+        +'<div class="fw7">'+esc(r.brand||'--')+'</div>'
+        +(periodDisplay?'<div style="font-size:10px;color:var(--text2);font-family:var(--mono);">'+esc(periodDisplay)+'</div>':'')
+      +'</td>'
+      +'<td class="td-mono fw7">'+fN(r.volume)+'</td>'
+      +'<td class="td-mono">'+fP(r.purShare)+'</td>'
+      +'<td class="td-mono">'+fP(r.clkShare)+'</td>'
+      +'<td class="td-mono">'+fP(r.impShare)+'</td>'
+      +'<td class="td-mono">'+fP(r.ctr)+'</td>'
+      +'<td class="td-mono">'+fP(r.cvr)+'</td>'
+      +'<td class="td-mono">'+(r.spSpend>0?fC(r.spSpend):'--')+'</td>'
+      +'<td class="td-mono">'+(r.spSales>0?fC(r.spSales):'--')+'</td>'
+      +'<td class="td-mono">'+(r.spOrders>0?fN(r.spOrders):'--')+'</td>'
+      +'<td><span class="badge '+(r.isTgt?'b-y':'b-n')+'">'+(r.isTgt?'&#x2713; Yes':'&#x2717; No')+'</span></td>'
+      +'<td>'+sBadge(r.sig)+'</td>'
+      +'</tr>';
+  }).join('');
+
+  const brandOpts=()=>'<option value="all">'+(brandNames.length>1?'All Brands ('+brandNames.length+')':'All Brands')+'</option>'
+    +brandNames.map(b=>{
+      const count=enr.filter(r=>r.brand===b).length;
+      const periods=[...new Set(enr.filter(r=>r.brand===b).map(r=>[r.month,r.year].filter(Boolean).join(' ')))].filter(Boolean);
+      return'<option value="'+esc(b)+'" '+(bF===b?'selected':'')+'>'+esc(b)+(periods.length?' ('+periods.join(', ')+')':'')+'</option>';
+    }).join('');
+
+  const mount=()=>{
+    const filt=filtered();
+    htm('t5',
+      '<div class="kpi-grid mb16">'
+        +'<div class="kpi-card g"><div class="kpi-label">&#x1F680; High Opportunity</div><div class="kpi-value">'+(sigC['op']||0)+'</div><div class="kpi-sub">Not targeted</div></div>'
+        +'<div class="kpi-card"><div class="kpi-label">&#x1F4C8; Underinvested</div><div class="kpi-value">'+(sigC['ui']||0)+'</div><div class="kpi-sub">Low spend, has orders</div></div>'
+        +'<div class="kpi-card r"><div class="kpi-label">&#x26A0;&#xFE0F; Inefficient</div><div class="kpi-value">'+(sigC['in']||0)+'</div><div class="kpi-sub">Spend, no conversions</div></div>'
+        +'<div class="kpi-card p"><div class="kpi-label">&#x1F451; Dominant</div><div class="kpi-value">'+(sigC['dm']||0)+'</div><div class="kpi-sub">Share &gt;50%</div></div>'
+        +'<div class="kpi-card y"><div class="kpi-label">&#x1F6E1;&#xFE0F; Defensive Gap</div><div class="kpi-value">'+(sigC['df']||0)+'</div><div class="kpi-sub">Targeted, low share</div></div>'
+        +'<div class="kpi-card"><div class="kpi-label">Total Queries</div><div class="kpi-value">'+filt.length+'</div><div class="kpi-sub">'+brandLabels.length+' report'+(brandLabels.length!==1?'s':'')+' &middot; '+brandNames.length+' brand'+(brandNames.length!==1?'s':'')+'</div></div>'
+      +'</div>'
+      +'<div class="table-controls mb16">'
+        // Brand dropdown — always show even for single brand so user sees what's loaded
+        +'<select class="tbl-select" id="t5brandSel" onchange="t5b(this.value)" style="min-width:180px;">'+brandOpts()+'</select>'
+        +'<input class="tbl-search" id="t5srch" placeholder="Search queries..." oninput="tF(\'t5tbl\',\'t5srch\')">'
+        +'<button class="pill '+(sF==='op'?'on':'')+'" onclick="t5f(\'op\')">&#x1F680; Opportunity</button>'
+        +'<button class="pill '+(sF==='nt'?'on':'')+'" onclick="t5f(\'nt\')">Not Targeted</button>'
+        +'<button class="pill '+(sF==='ls'?'on':'')+'" onclick="t5f(\'ls\')">Low Share</button>'
+        +'<button class="pill '+(sF==='hv'?'on':'')+'" onclick="t5f(\'hv\')">High Volume</button>'
+        +'<button class="pill '+(sF==='in'?'don':'')+'" onclick="t5f(\'in\')">&#x26A0;&#xFE0F; Inefficient</button>'
+        +(sF!=='all'?'<button class="pill" onclick="t5f(\'all\')">&#x2715; Clear</button>':'')
+      +'</div>'
+      +'<div class="table-wrap"><table id="t5tbl"><thead><tr>'
+        +'<th>Search Query</th><th>Brand &amp; Period</th><th>Volume</th><th>Purchase%</th><th>Click%</th><th>Impr%</th><th>CTR</th><th>CVR</th>'
+        +'<th>SP Spend</th><th>SP Sales</th><th>SP Orders</th><th>Targeted?</th><th>Signal</th>'
+      +'</tr></thead><tbody>'+rows()+'</tbody></table></div>');
+  };
+
+  const applyT5Filters=()=>requestAnimationFrame(()=>{
+    addColFilter('t5tbl',11,'Targeted');
+    addColFilter('t5tbl',12,'Signal');
+  });
+
+  window.t5b=v=>{
+    bF=v;
+    // Update select in case mount rebuilds it
+    const sel=el('t5brandSel');if(sel)sel.value=v;
+    const tbody=document.querySelector('#t5tbl tbody');
+    if(tbody)tbody.innerHTML=rows();
+    applyT5Filters();
+  };
+  window.t5f=v=>{sF=sF===v?'all':v;mount();applyT5Filters();};
+  mount();applyT5Filters();
+}
+
+// ============================================================
+// TAB 6: TARGETING PERFORMANCE
+// ============================================================
+function rT6(){
+  const ads=S.D.ads;
+  const allKws=[
+    ...ads.sp.keywords.map(k=>({...k,adType:'SP',tType:'Keyword'})),
+    ...ads.sb.keywords.map(k=>({...k,adType:'SB',tType:'Keyword'}))
+  ];
+  const allTgt=[
+    ...ads.sp.productTargeting.map(t=>({...t,adType:'SP',tType:'Product Targeting'})),
+    ...ads.sb.productTargeting.map(t=>({...t,adType:'SB',tType:'Product Targeting'})),
+    ...ads.sd.contextual.map(t=>({...t,adType:'SD',tType:'Contextual'})),
+    ...ads.sd.audience.map(t=>({...t,adType:'SD',tType:'Audience'}))
+  ];
+  const all=[...allKws,...allTgt];
+  if(!all.length){htm('t6','<div class="empty-state"><span class="empty-icon">&#x1F3AF;</span><div class="empty-title">No targeting data</div><div>Upload Amazon Ads Bulk XLSX</div></div>');return;}
+
+  // Compute average ACOS baseline
+  const withSales=all.filter(t=>t.sales>0&&t.spend>0);
+  const avgAcos=withSales.length?withSales.reduce((s,t)=>s+dv(t.spend,t.sales),0)/withSales.length:0.35;
+  const goodAcos=avgAcos*0.8;
+
+  const classify=t=>{
+    const acos=dv(t.spend,t.sales);
+    const paused=t.state!=='enabled';
+    if(!paused&&t.sales>0&&acos<=goodAcos&&acos>0&&t.clicks>=10) return 'scale';
+    if(paused&&t.orders>0&&acos<=goodAcos&&acos>0) return 'reactivate';
+    if(paused&&t.orders>0&&(acos>goodAcos||acos===0)) return 'relaunch';
+    if(!paused&&t.spend>10&&t.orders===0&&t.clicks>20) return 'waste';
+    if(!paused&&acos>0.9&&t.clicks>20) return 'waste';
+    if(!paused&&t.impressions>0&&t.impressions<300) return 'low-impr';
+    if(!paused&&t.impressions===0) return 'no-impr';
+    return 'normal';
+  };
+
+  const enr=all.map(t=>({...t,acos:dv(t.spend,t.sales),roas:dv(t.sales,t.spend),cpc:dv(t.spend,t.clicks),sig:classify(t)}));
+  const scale   =enr.filter(t=>t.sig==='scale').sort((a,b)=>b.sales-a.sales);
+  const reactiv =enr.filter(t=>t.sig==='reactivate'||t.sig==='relaunch').sort((a,b)=>b.orders-a.orders);
+  const waste   =enr.filter(t=>t.sig==='waste').sort((a,b)=>b.spend-a.spend);
+  const lowImpr =enr.filter(t=>t.sig==='low-impr'||t.sig==='no-impr').sort((a,b)=>a.impressions-b.impressions);
+
+  const sigBadge=sig=>({
+    scale:`<span class="badge b-op">&#x1F4C8; Scale</span>`,
+    reactivate:`<span class="badge b-ui">&#x1F504; Reactivate</span>`,
+    relaunch:`<span class="badge b-df">&#x26A1; Relaunch</span>`,
+    waste:`<span class="badge b-in">&#x23F8; Pause</span>`,
+    'low-impr':`<span class="badge b-df">&#x1F4C9; Low Impr</span>`,
+    'no-impr':`<span class="badge" style="background:var(--bg);border:1px solid var(--border2);color:var(--text2);">No Impr</span>`
+  }[sig]||'');
+
+  const tRow=t=>{
+    const kw=t.keyword||t.expression||t.expressionType||'—';
+    const klabel=kw.length>55?kw.substring(0,55)+'…':kw;
+    return`<tr data-search="${esc((kw+' '+t.campaignName+' '+t.adGroupName+' '+(t.matchType||'')).toLowerCase())}">
+      <td style="font-size:11px;max-width:190px;overflow:hidden;text-overflow:ellipsis;" title="${esc(kw)}">${esc(klabel)}</td>
+      <td><span class="badge ${t.adType==='SP'?'b-sp':t.adType==='SB'?'b-sb':'b-sd'}">${t.adType}</span></td>
+      <td style="font-size:10px;color:var(--text2);">${esc(t.tType)}</td>
+      <td style="font-size:11px;max-width:150px;overflow:hidden;text-overflow:ellipsis;">${esc(t.campaignName)}</td>
+      <td>${t.matchType?`<span class="badge" style="background:var(--bg);border:1px solid var(--border2);color:var(--text2);font-size:10px;">${esc(t.matchType)}</span>`:'—'}</td>
+      <td>${stateBadge(t.state)}</td>
+      <td class="td-mono">${fN(t.impressions)}</td>
+      <td class="td-mono">${fN(t.clicks)}</td>
+      <td class="td-mono">${fC(t.spend)}</td>
+      <td class="td-mono">${fC(t.sales)}</td>
+      <td class="td-mono">${fN(t.orders)}</td>
+      <td class="td-mono ${acosColor(t.acos)} fw7">${t.sales>0?fP(t.acos):'—'}</td>
+      <td class="td-mono">${t.roas>0?t.roas.toFixed(2)+'x':'—'}</td>
+      <td class="td-mono">${t.bid?fC(t.bid):'—'}</td>
+      <td>${sigBadge(t.sig)}</td>
+    </tr>`;
+  };
+
+  const tCols=['Target/Keyword','Type','Target Type','Campaign','Match','State','Impr.','Clicks','Spend','Sales','Orders','ACOS','ROAS','Bid','Signal'];
+
+  htm('t6',`
+    <div class="kpi-grid mb16">
+      <div class="kpi-card g"><div class="kpi-label">&#x1F4C8; Scale Opportunities</div><div class="kpi-value">${scale.length}</div><div class="kpi-sub">Healthy ACOS, 10+ clicks</div></div>
+      <div class="kpi-card p"><div class="kpi-label">&#x1F504; Reactivate/Relaunch</div><div class="kpi-value">${reactiv.length}</div><div class="kpi-sub">Paused, had conversions</div></div>
+      <div class="kpi-card r"><div class="kpi-label">&#x1F6B8; Wasted Spend</div><div class="kpi-value">${waste.length}</div><div class="kpi-sub">Not paused, 0 orders</div></div>
+      <div class="kpi-card y"><div class="kpi-label">&#x1F4C9; Low/No Impressions</div><div class="kpi-value">${lowImpr.length}</div><div class="kpi-sub">&lt;300 or 0 impressions</div></div>
+      <div class="kpi-card"><div class="kpi-label">Total Targets</div><div class="kpi-value">${all.length}</div><div class="kpi-sub">Avg ACOS: ${fP(avgAcos)}</div></div>
+    </div>
+
+    <div class="section-head">&#x1F4C8; Scale Opportunities</div>
+    ${scale.length?`<div class="alert alert-ok mb16"><div class="alert-title">&#x1F4C8; ${scale.length} targets at or below ${fP(goodAcos)} ACOS &mdash; healthy, consider increasing bids/budgets</div></div>`:'' }
+    ${scale.length?mkTbl(tCols,scale.map(tRow).join(''),{search:true,pl:'Filter target or campaign...',id:'t6sc'}):'<div style="padding:16px;color:var(--text2);text-align:center;">No scaling opportunities identified.</div>'}
+
+    <div class="section-head">&#x1F504; Paused Targets — Reactivate or Relaunch</div>
+    ${reactiv.length?`<div class="alert alert-i mb16"><div class="alert-title">&#x1F504; ${reactiv.length} paused targets had prior conversions &mdash; review bids before reactivating</div></div>`:''}
+    ${reactiv.length?mkTbl(tCols,reactiv.map(tRow).join(''),{search:true,pl:'Filter...',id:'t6re'}):'<div style="padding:16px;color:var(--text2);text-align:center;">No paused targets with prior conversions.</div>'}
+
+    <div class="section-head">&#x1F6B8; Wasted Spend Targets (Still Enabled)</div>
+    ${waste.length?`<div class="alert alert-d mb16"><div class="alert-title">&#x1F6B8; ${waste.length} targets with spend and 0 orders &mdash; pause or add as negatives</div></div>`:''}
+    ${waste.length?mkTbl(tCols,waste.map(tRow).join(''),{search:true,pl:'Filter...',id:'t6wa'}):'<div class="alert alert-ok mb16"><div>No wasted spend targets found.</div></div>'}
+
+    <div class="section-head">&#x1F4C9; Low/No Impression Targets (&lt;300)</div>
+    ${lowImpr.length?mkTbl(tCols,lowImpr.map(tRow).join(''),{search:true,pl:'Filter...',id:'t6li'}):'<div style="padding:16px;color:var(--text2);text-align:center;">No low-impression targets found.</div>'}
+  `);
+  // Col filters for each targeting section: Type(1), Target Type(2), Match(4), State(5), Signal(14)
+  requestAnimationFrame(()=>{
+    ['t6sc','t6re','t6wa','t6li'].forEach(id=>{
+      addColFilter(id,1,'Type');
+      addColFilter(id,2,'Target Type');
+      addColFilter(id,4,'Match');
+      addColFilter(id,5,'State');
+      addColFilter(id,14,'Signal');
+    });
+  });
+}
+
+</script>
+
+</body>
+</html>
