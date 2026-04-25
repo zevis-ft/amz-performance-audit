@@ -163,7 +163,16 @@ tbody tr:last-child td{border-bottom:none;}
 <div class="app">
 <header class="topbar">
   <div class="topbar-logo"><div class="logo-icon">&#x1F680;</div>Amazon Performance Audit</div>
-  <div class="topbar-right"><span id="sDot" class="status-dot"></span><span id="sTxt">No data loaded</span></div>
+  <div class="topbar-right">
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;">
+      <button id="exportBtn" onclick="exportToExcel()" disabled style="font-family:var(--font);font-size:12px;font-weight:700;padding:6px 16px;border-radius:7px;border:1.5px solid var(--green-d);background:rgba(190,227,219,0.18);color:#0f766e;cursor:pointer;transition:all 0.15s;opacity:0.4;pointer-events:none;" title="Export all data to Excel">&#x1F4E5; Export to Excel</button>
+      <div id="exportProgress" style="display:none;width:140px;height:4px;background:var(--border);border-radius:4px;overflow:hidden;">
+        <div id="exportBar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--green-d),var(--blue-d));border-radius:4px;transition:width 0.2s ease;"></div>
+      </div>
+      <div id="exportLabel" style="display:none;font-size:10px;font-family:var(--mono);color:var(--text2);"></div>
+    </div>
+    <span id="sDot" class="status-dot"></span><span id="sTxt">No data loaded</span>
+  </div>
 </header>
 <div class="body-row">
 <nav class="sidebar">
@@ -625,6 +634,7 @@ async function processAll(){
   rT1();rT2();rT3();rT4();rT5();rT6();
   const pts=[];if(S.D.br.length)pts.push('Business Report');if(S.D.ap.length)pts.push('ASIN');if(S.D.mAds.length)pts.push('Monthly Ads');if(S.D.bm.length)pts.push('Brand Metrics');
   el('sDot').classList.add('ready');el('sTxt').textContent=pts.length?'Loaded: '+pts.join(', '):'Processed';
+  const eb=el('exportBtn');if(eb){eb.disabled=false;eb.style.opacity='1';eb.style.pointerEvents='auto';}
   goTab('tab1',document.querySelector('.nav-item[onclick*="tab1"]'));
   el('goBtn').disabled=false;el('goBtn').textContent='\u26A1 Process & Analyse';
 }
@@ -1169,9 +1179,9 @@ function rT5(){
   const enr=bm.map(r=>{
     const k=r.query.toLowerCase().trim();const sp=spMap.get(k)||{spend:0,sales:0,orders:0};const isTgt=sp.spend>0;
     let sig=null;
-    if(r.volume>500&&r.purShare<0.2&&!isTgt)sig='op';
+    if(r.volume>500&&r.purTotal>3&&!isTgt)sig='op';
     else if(r.volume>200&&sp.spend<20&&sp.orders>0)sig='ui';
-    else if(sp.spend>50&&sp.orders===0)sig='in';
+    else if(sp.spend>20&&sp.orders===0)sig='in';
     else if(r.purShare>0.5)sig='dm';
     else if(r.purShare<0.1&&isTgt)sig='df';
     return{...r,spSpend:sp.spend,spSales:sp.sales,spOrders:sp.orders,isTgt,sig};
@@ -1230,9 +1240,9 @@ function rT5(){
     const filt=filtered();
     htm('t5',
       '<div class="kpi-grid mb16">'
-        +'<div class="kpi-card g"><div class="kpi-label">&#x1F680; High Opportunity</div><div class="kpi-value">'+(sigC['op']||0)+'</div><div class="kpi-sub">Not targeted</div></div>'
+        +'<div class="kpi-card g"><div class="kpi-label">&#x1F680; High Opportunity</div><div class="kpi-value">'+(sigC['op']||0)+'</div><div class="kpi-sub">Vol&gt;500, 3+ purchases, not targeted</div></div>'
         +'<div class="kpi-card"><div class="kpi-label">&#x1F4C8; Underinvested</div><div class="kpi-value">'+(sigC['ui']||0)+'</div><div class="kpi-sub">Low spend, has orders</div></div>'
-        +'<div class="kpi-card r"><div class="kpi-label">&#x26A0;&#xFE0F; Inefficient</div><div class="kpi-value">'+(sigC['in']||0)+'</div><div class="kpi-sub">Spend, no conversions</div></div>'
+        +'<div class="kpi-card r"><div class="kpi-label">&#x26A0;&#xFE0F; Inefficient</div><div class="kpi-value">'+(sigC['in']||0)+'</div><div class="kpi-sub">Spend &gt;$20, no orders</div></div>'
         +'<div class="kpi-card p"><div class="kpi-label">&#x1F451; Dominant</div><div class="kpi-value">'+(sigC['dm']||0)+'</div><div class="kpi-sub">Share &gt;50%</div></div>'
         +'<div class="kpi-card y"><div class="kpi-label">&#x1F6E1;&#xFE0F; Defensive Gap</div><div class="kpi-value">'+(sigC['df']||0)+'</div><div class="kpi-sub">Targeted, low share</div></div>'
         +'<div class="kpi-card"><div class="kpi-label">Total Queries</div><div class="kpi-value">'+filt.length+'</div><div class="kpi-sub">'+brandLabels.length+' report'+(brandLabels.length!==1?'s':'')+' &middot; '+brandNames.length+' brand'+(brandNames.length!==1?'s':'')+'</div></div>'
@@ -1381,6 +1391,351 @@ function rT6(){
     });
   });
 }
+
+
+// ============================================================
+// EXCEL EXPORT
+// ============================================================
+function setProgress(pct, label){
+  const bar=el('exportBar'), prog=el('exportProgress'), lbl=el('exportLabel');
+  if(!bar) return;
+  if(pct===null){ prog.style.display='none'; lbl.style.display='none'; return; }
+  prog.style.display='block'; lbl.style.display='block';
+  bar.style.width=pct+'%';
+  if(label) lbl.textContent=label;
+}
+
+async function exportToExcel(){
+  const btn=el('exportBtn');
+  btn.disabled=true; btn.textContent='⏳ Building...';
+  setProgress(2,'Preparing...');
+  await new Promise(r=>setTimeout(r,30)); // let UI update
+
+  try{
+    const wb = XLSX.utils.book_new();
+
+    // ── helpers ──────────────────────────────────────────────
+    const sN2=v=>{const n=parseFloat(String(v||'').replace(/[$,%\s]/g,''));return isNaN(n)?0:n;};
+    const pct2dp=v=>isNaN(v)?'0.00%':((+v)*100).toFixed(2)+'%';
+    const cur2dp=v=>isNaN(v)?'$0.00':'$'+(+v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+    const int0=v=>isNaN(v)?0:Math.round(+v);
+    const fix2=v=>isNaN(v)?'0.00':(+v).toFixed(2);
+
+    function addSheet(name, headers, rows){
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+      // Auto column widths
+      const widths = headers.map((h,i)=>{
+        let max=String(h).length;
+        rows.forEach(r=>{ const v=String(r[i]??''); if(v.length>max) max=v.length; });
+        return {wch: Math.min(Math.max(max+2, 10), 55)};
+      });
+      ws['!cols']=widths;
+      XLSX.utils.book_append_sheet(wb, ws, name);
+    }
+
+    // ── 1. SUMMARY ──────────────────────────────────────────
+    setProgress(8,'Summary sheet...');
+    await new Promise(r=>setTimeout(r,10));
+    {
+      const br=S.D.br, ads=S.D.mAds;
+      const M=new Map();
+      br.forEach(r=>{if(!r.monthKey)return;const m=M.get(r.monthKey)||{sales:0,orders:0,sessions:0,aS:0,aO:0,aSpend:0,aC:0,aI:0};m.sales+=r.sales;m.orders+=r.orders;m.sessions+=r.sessions;M.set(r.monthKey,m);});
+      ads.forEach(r=>{if(!r.monthKey)return;const m=M.get(r.monthKey)||{sales:0,orders:0,sessions:0,aS:0,aO:0,aSpend:0,aC:0,aI:0};m.aS+=r.sales;m.aO+=r.orders;m.aSpend+=r.spend;m.aC+=r.clicks;m.aI+=r.impressions;M.set(r.monthKey,m);});
+      const tot=[...M.values()].reduce((a,m)=>({sales:a.sales+m.sales,orders:a.orders+m.orders,sessions:a.sessions+m.sessions,aS:a.aS+m.aS,aO:a.aO+m.aO,aSpend:a.aSpend+m.aSpend,aC:a.aC+m.aC,aI:a.aI+m.aI}),{sales:0,orders:0,sessions:0,aS:0,aO:0,aSpend:0,aC:0,aI:0});
+      const orgS=tot.sales-tot.aS;
+      const allCamps=[...S.D.ads.sp.campaigns,...S.D.ads.sb.campaigns,...S.D.ads.sd.campaigns];
+      const tSpend=allCamps.reduce((s,c)=>s+c.spend,0);
+      const tSales=allCamps.reduce((s,c)=>s+c.sales,0);
+      const rows=[
+        ['Generated',new Date().toLocaleString()],
+        ['',''],
+        ['=== REVENUE & TRAFFIC ===',''],
+        ['Total Revenue (Business Report)',cur2dp(tot.sales)],
+        ['Ad Revenue (JSON)',cur2dp(tot.aS)],
+        ['Organic Revenue',cur2dp(orgS)],
+        ['Total Orders',int0(tot.orders)],
+        ['Ad Orders',int0(tot.aO)],
+        ['Total Sessions',int0(tot.sessions)],
+        ['',''],
+        ['=== ADVERTISING ===',''],
+        ['Ad Spend (JSON)',cur2dp(tot.aSpend)],
+        ['ACOS (JSON data)',pct2dp(tot.aS>0?tot.aSpend/tot.aS:0)],
+        ['TACOS (JSON data)',pct2dp(tot.sales>0?tot.aSpend/tot.sales:0)],
+        ['ROAS (JSON data)',fix2(tot.aSpend>0?tot.aS/tot.aSpend:0)+'x'],
+        ['CTR',pct2dp(tot.aI>0?tot.aC/tot.aI:0)],
+        ['CVR',pct2dp(tot.aC>0?tot.aO/tot.aC:0)],
+        ['',''],
+        ['=== ADS BULK FILE (30-Day) ===',''],
+        ['Total Campaigns',allCamps.length],
+        ['Total Spend',cur2dp(tSpend)],
+        ['Total Sales',cur2dp(tSales)],
+        ['Total Orders',int0(allCamps.reduce((s,c)=>s+c.orders,0))],
+        ['Overall ACOS',pct2dp(tSales>0?tSpend/tSales:0)],
+        ['Overall ROAS',fix2(tSpend>0?tSales/tSpend:0)+'x'],
+        ['',''],
+        ['=== DATA LOADED ===',''],
+        ['Business Report rows',br.length],
+        ['Monthly Ads JSON months',ads.length],
+        ['ASIN Performance rows',S.D.ap.length],
+        ['Brand Metrics queries',S.D.bm.length],
+        ['SP Campaigns',S.D.ads.sp.campaigns.length],
+        ['SB Campaigns',S.D.ads.sb.campaigns.length],
+        ['SD Campaigns',S.D.ads.sd.campaigns.length],
+        ['SP Keywords',S.D.ads.sp.keywords.length],
+        ['Search Terms',S.D.ads.sp.searchTerms.length+S.D.ads.sb.searchTerms.length],
+      ];
+      const ws=XLSX.utils.aoa_to_sheet([['Metric','Value'],...rows]);
+      ws['!cols']=[{wch:36},{wch:22}];
+      XLSX.utils.book_append_sheet(wb, ws, '📊 Summary');
+    }
+
+    // ── 2. EXECUTIVE MONTHLY ────────────────────────────────
+    setProgress(18,'Executive monthly...');
+    await new Promise(r=>setTimeout(r,10));
+    if(S.D.br.length||S.D.mAds.length){
+      const M=new Map();
+      S.D.br.forEach(r=>{if(!r.monthKey)return;const m=M.get(r.monthKey)||{sales:0,orders:0,sessions:0,aS:0,aO:0,aSpend:0,aC:0,aI:0};m.sales+=r.sales;m.orders+=r.orders;m.sessions+=r.sessions;M.set(r.monthKey,m);});
+      S.D.mAds.forEach(r=>{if(!r.monthKey)return;const m=M.get(r.monthKey)||{sales:0,orders:0,sessions:0,aS:0,aO:0,aSpend:0,aC:0,aI:0};m.aS+=r.sales;m.aO+=r.orders;m.aSpend+=r.spend;m.aC+=r.clicks;m.aI+=r.impressions;M.set(r.monthKey,m);});
+      const mon=[...M.keys()].sort().slice(-24).map(k=>({k,label:mLbl(k),...M.get(k)}));
+      addSheet('📈 Executive (Monthly)',
+        ['Month','Total Sales','Ad Sales','Organic Sales','Total Orders','Ad Orders','Sessions','Ad Spend','CTR','CVR','ACOS','TACOS'],
+        mon.map(m=>[
+          m.label,
+          cur2dp(m.sales), cur2dp(m.aS), cur2dp(m.sales-m.aS),
+          int0(m.orders), int0(m.aO), int0(m.sessions),
+          cur2dp(m.aSpend),
+          pct2dp(m.aI>0?m.aC/m.aI:0),
+          pct2dp(m.aC>0?m.aO/m.aC:0),
+          pct2dp(m.aS>0?m.aSpend/m.aS:0),
+          pct2dp(m.sales>0?m.aSpend/m.sales:0),
+        ])
+      );
+    }
+
+    // ── 3. ASIN PERFORMANCE ─────────────────────────────────
+    setProgress(30,'ASIN performance...');
+    await new Promise(r=>setTimeout(r,10));
+    if(S.D.ap.length){
+      const ppc=new Map();
+      [...S.D.ads.sp.productAds,...S.D.ads.sd.productAds].forEach(ad=>{if(!ad.asin)return;const c=ppc.get(ad.asin)||{spend:0,sales:0,orders:0};c.spend+=ad.spend;c.sales+=ad.sales;c.orders+=ad.orders;ppc.set(ad.asin,c);});
+      addSheet('📦 ASIN Performance',
+        ['Child ASIN','Parent ASIN','Title','Sales','Units','Orders','Sessions','Page Views','Buy Box %','PPC Spend','PPC Sales','TACOS'],
+        [...S.D.ap].sort((a,b)=>b.sales-a.sales).map(r=>{
+          const p=ppc.get(r.childASIN)||{spend:0,sales:0,orders:0};
+          return[
+            r.childASIN||'—', r.parentASIN||'—', r.title||'',
+            cur2dp(r.sales), int0(r.units), int0(r.orders), int0(r.sessions), int0(r.pageViews),
+            pct2dp(r.buyBox),
+            cur2dp(p.spend), cur2dp(p.sales),
+            pct2dp(r.sales>0?p.spend/r.sales:0),
+          ];
+        })
+      );
+    }
+
+    // ── 4. PPC CAMPAIGNS ────────────────────────────────────
+    setProgress(44,'PPC campaigns...');
+    await new Promise(r=>setTimeout(r,10));
+    {
+      const all=[
+        ...S.D.ads.sp.campaigns.map(c=>({...c,adType:'SP'})),
+        ...S.D.ads.sb.campaigns.map(c=>({...c,adType:'SB'})),
+        ...S.D.ads.sd.campaigns.map(c=>({...c,adType:'SD'})),
+      ];
+      if(all.length){
+        addSheet('💰 PPC Campaigns',
+          ['Campaign','Ad Type','State','Spend','Sales','Orders','Impressions','Clicks','ACOS','ROAS','CPC','Daily Budget'],
+          all.sort((a,b)=>b.spend-a.spend).map(c=>[
+            c.campaignName||'', c.adType, c.state||'',
+            cur2dp(c.spend), cur2dp(c.sales), int0(c.orders),
+            int0(c.impressions), int0(c.clicks),
+            pct2dp(c.sales>0?c.spend/c.sales:0),
+            fix2(c.spend>0?c.sales/c.spend:0)+'x',
+            cur2dp(c.clicks>0?c.spend/c.clicks:0),
+            cur2dp(c.dailyBudget||0),
+          ])
+        );
+      }
+    }
+
+    // ── 5. KEYWORDS ─────────────────────────────────────────
+    setProgress(55,'Keywords...');
+    await new Promise(r=>setTimeout(r,10));
+    {
+      const all=[
+        ...S.D.ads.sp.keywords.map(k=>({...k,adType:'SP'})),
+        ...S.D.ads.sb.keywords.map(k=>({...k,adType:'SB'})),
+      ];
+      if(all.length){
+        addSheet('🔑 Keywords',
+          ['Keyword','Ad Type','Match Type','Campaign','Ad Group','State','Impressions','Clicks','Spend','Sales','Orders','ACOS','ROAS','Bid'],
+          all.sort((a,b)=>b.spend-a.spend).map(k=>[
+            k.keyword||'', k.adType, k.matchType||'',
+            k.campaignName||'', k.adGroupName||'', k.state||'',
+            int0(k.impressions), int0(k.clicks),
+            cur2dp(k.spend), cur2dp(k.sales), int0(k.orders),
+            pct2dp(k.sales>0?k.spend/k.sales:0),
+            fix2(k.spend>0?k.sales/k.spend:0)+'x',
+            cur2dp(k.bid||0),
+          ])
+        );
+      }
+    }
+
+    // ── 6. SEARCH TERMS ─────────────────────────────────────
+    setProgress(66,'Search terms...');
+    await new Promise(r=>setTimeout(r,10));
+    {
+      const all=[...S.D.ads.sp.searchTerms,...S.D.ads.sb.searchTerms];
+      if(all.length){
+        addSheet('🔍 Search Terms',
+          ['Search Term','Campaign','Ad Group','Match Type','Impressions','Clicks','Spend','Sales','Orders','ACOS','ROAS'],
+          all.sort((a,b)=>b.spend-a.spend).map(t=>[
+            t.searchTerm||'', t.campaignName||'', t.adGroupName||'', t.matchType||'',
+            int0(t.impressions), int0(t.clicks),
+            cur2dp(t.spend), cur2dp(t.sales), int0(t.orders),
+            pct2dp(t.sales>0?t.spend/t.sales:0),
+            fix2(t.spend>0?t.sales/t.spend:0)+'x',
+          ])
+        );
+      }
+    }
+
+    // ── 7. TARGETING ────────────────────────────────────────
+    setProgress(76,'Targeting signals...');
+    await new Promise(r=>setTimeout(r,10));
+    {
+      const allKwsT=[...S.D.ads.sp.keywords,...S.D.ads.sb.keywords];
+      const allTgtT=[...S.D.ads.sp.productTargeting,...S.D.ads.sb.productTargeting,...S.D.ads.sd.contextual,...S.D.ads.sd.audience];
+      const allT=[...allKwsT.map(t=>({...t,tType:'Keyword'})),...allTgtT.map(t=>({...t,tType:'Target'}))];
+      if(allT.length){
+        const withSalesT=allT.filter(t=>t.sales>0&&t.spend>0);
+        const avgAcosT=withSalesT.length?withSalesT.reduce((s,t)=>s+(t.spend/t.sales),0)/withSalesT.length:0.35;
+        const goodAcosT=avgAcosT*0.8;
+        const classifyT=t=>{
+          const ac=t.sales>0?t.spend/t.sales:999;
+          const paused=t.state!=='enabled';
+          if(!paused&&t.sales>0&&ac<=goodAcosT&&ac>0&&t.clicks>=10) return 'Scale ↑';
+          if(paused&&t.orders>0&&ac<=goodAcosT&&ac>0) return 'Reactivate';
+          if(paused&&t.orders>0) return 'Relaunch';
+          if(!paused&&t.spend>10&&t.orders===0&&t.clicks>20) return 'Pause (Waste)';
+          if(!paused&&ac>0.9&&t.clicks>20) return 'Pause (High ACOS)';
+          if(!paused&&t.impressions>0&&t.impressions<300) return 'Low Impressions';
+          if(!paused&&t.impressions===0) return 'No Impressions';
+          return 'Normal';
+        };
+        addSheet('🎯 Targeting',
+          ['Keyword/Target','Target Type','Campaign','Ad Group','Match Type','State','Signal','Impressions','Clicks','Spend','Sales','Orders','ACOS','ROAS','Bid'],
+          allT.sort((a,b)=>b.spend-a.spend).map(t=>[
+            t.keyword||t.expression||t.expressionType||'—',
+            t.tType, t.campaignName||'', t.adGroupName||'',
+            t.matchType||'', t.state||'', classifyT(t),
+            int0(t.impressions), int0(t.clicks),
+            cur2dp(t.spend), cur2dp(t.sales), int0(t.orders),
+            pct2dp(t.sales>0?t.spend/t.sales:0),
+            fix2(t.spend>0?t.sales/t.spend:0)+'x',
+            cur2dp(t.bid||0),
+          ])
+        );
+      }
+    }
+
+    // ── 8. BRAND METRICS ────────────────────────────────────
+    setProgress(86,'Brand metrics...');
+    await new Promise(r=>setTimeout(r,10));
+    if(S.D.bm.length){
+      addSheet('📊 Brand Metrics',
+        ['Brand','Period','Search Query','Volume','Total Impressions','Brand Imp. Share','Total Clicks','Brand Click Share','Total Purchases','Brand Purchase Share','CTR','CVR'],
+        S.D.bm.map(r=>[
+          r.brand||'', r.brandLabel||'', r.query||'',
+          int0(r.volume), int0(r.impTotal),
+          pct2dp(r.impShare),
+          int0(r.clkTotal),
+          pct2dp(r.clkShare),
+          int0(r.purTotal),
+          pct2dp(r.purShare),
+          pct2dp(r.ctr),
+          pct2dp(r.cvr),
+        ])
+      );
+    }
+
+    // ── 9. RECOMMENDATIONS ──────────────────────────────────
+    setProgress(94,'Recommendations...');
+    await new Promise(r=>setTimeout(r,10));
+    {
+      const recs=[];
+      const allCampsR=[...S.D.ads.sp.campaigns,...S.D.ads.sb.campaigns,...S.D.ads.sd.campaigns];
+      const tSpendR=allCampsR.reduce((s,c)=>s+c.spend,0);
+      const tSalesR=allCampsR.reduce((s,c)=>s+c.sales,0);
+      const oAcos=tSalesR>0?tSpendR/tSalesR:0;
+      const withSalesR=allCampsR.filter(c=>c.sales>0&&c.spend>0);
+      const avgAcosR=withSalesR.length?withSalesR.reduce((s,c)=>s+(c.spend/c.sales),0)/withSalesR.length:0.35;
+
+      if(oAcos>0.35) recs.push(['HIGH','⚠️ High Overall ACOS','ACOS is '+pct2dp(oAcos)+'. Target below 30–35%. Review bids, match types, and add negative keywords.']);
+      else if(oAcos>0&&oAcos<=0.20) recs.push(['LOW','✅ Excellent ACOS','ACOS of '+pct2dp(oAcos)+' is strong. Consider scaling ad spend.']);
+      else if(oAcos>0) recs.push(['MED','👍 Healthy ACOS','ACOS at '+pct2dp(oAcos)+'. Continue monitoring and optimize underperformers.']);
+
+      const waste=allCampsR.filter(c=>c.spend>50&&c.orders===0);
+      if(waste.length) recs.push(['HIGH','🚨 Wasted Spend',waste.length+' campaign(s) with spend and 0 orders. Pause or add negatives: '+waste.slice(0,3).map(c=>c.campaignName).join('; ')]);
+
+      const scaleKws=S.D.ads.sp.keywords.filter(k=>k.clicks>=10&&k.sales>0&&(k.spend/k.sales)<=avgAcosR*0.8);
+      if(scaleKws.length) recs.push(['LOW','📈 Scale Opportunities',scaleKws.length+' keyword(s) have healthy ACOS and 10+ clicks. Increase bids or budgets.']);
+
+      if(!S.D.ads.sp.negKeywords.length&&S.D.ads.sp.keywords.length>0) recs.push(['MED','⚠️ No Negative Keywords','No ad-group negative keywords found. Add negatives to reduce wasted spend.']);
+
+      const lowBB=S.D.ap.filter(r=>r.buyBox>0&&r.buyBox<0.8);
+      if(lowBB.length) recs.push(['MED','⚠️ Low Buy Box',lowBB.length+' ASIN(s) with Buy Box below 80%. Review pricing and fulfillment.']);
+
+      const lowImpr=allCampsR.filter(c=>c.impressions>0&&c.impressions<300&&c.state==='enabled');
+      if(lowImpr.length) recs.push(['LOW','📉 Low Impression Campaigns',lowImpr.length+' enabled campaign(s) with < 300 impressions. Check bids and budgets.']);
+
+      if(!recs.length) recs.push(['LOW','✅ No Major Issues','No critical issues detected. Keep monitoring ACOS and scale winning keywords.']);
+
+      addSheet('💡 Recommendations',
+        ['Priority','Issue','Recommendation'],
+        recs
+      );
+    }
+
+    // ── Write ────────────────────────────────────────────────
+    setProgress(98,'Writing file...');
+    await new Promise(r=>setTimeout(r,30));
+    const dateStr=new Date().toISOString().slice(0,10);
+    XLSX.writeFile(wb, `Amazon_Audit_${dateStr}.xlsx`);
+
+    setProgress(100,'✅ Done!');
+    btn.textContent='✅ Exported!';
+    setTimeout(()=>{
+      btn.textContent='📥 Export to Excel';
+      btn.disabled=false;
+      setProgress(null);
+    }, 2500);
+
+  } catch(err){
+    console.error('Export error:', err);
+    setProgress(null);
+    btn.textContent='❌ Export Failed';
+    btn.style.borderColor='var(--danger-d)';
+    btn.style.color='var(--danger-d)';
+    btn.style.background='rgba(252,165,165,0.1)';
+    // Show error detail
+    const lbl=el('exportLabel');
+    if(lbl){ lbl.style.display='block'; lbl.style.color='var(--danger-d)'; lbl.textContent=err.message||'Unknown error'; }
+    setTimeout(()=>{
+      btn.textContent='📥 Export to Excel';
+      btn.disabled=false;
+      btn.style.borderColor='var(--green-d)';
+      btn.style.color='#0f766e';
+      btn.style.background='rgba(190,227,219,0.18)';
+      setProgress(null);
+    }, 4000);
+  }
+}
+
+
+
+
 
 </script>
 
