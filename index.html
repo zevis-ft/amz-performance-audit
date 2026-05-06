@@ -176,6 +176,9 @@ tbody tr:last-child td{border-bottom:none;}
   <div class="nav-item" onclick="goTab('tab4',this)"><span class="nav-icon">&#x1F50D;</span>Search Terms<span class="tf-pill tf-d">30D</span></div>
   <div class="nav-item" onclick="goTab('tab5',this)"><span class="nav-icon">&#x1F4C8;</span>Brand Metrics<span class="tf-pill tf-l">LM</span></div>
   <div class="nav-item" onclick="goTab('tab6',this)"><span class="nav-icon">&#x1F3AF;</span>Targeting<span class="tf-pill tf-d">30D</span></div>
+  <div style="margin-top:auto;padding:16px;">
+    <button id="exportBtn" onclick="exportSnapshot()" style="display:none;width:100%;font-family:var(--font);font-size:12px;font-weight:700;padding:9px 12px;border:none;border-radius:var(--r);background:linear-gradient(135deg,#BEE3DB,#A7C7E7);color:var(--text);cursor:pointer;letter-spacing:-0.2px;">&#x1F4E5; Export Report</button>
+  </div>
 </nav>
 <main class="main">
 <!-- UPLOAD -->
@@ -203,8 +206,8 @@ tbody tr:last-child td{border-bottom:none;}
       <div id="jsonPasteMode" style="display:none;margin-top:8px;">
         <textarea id="jsonPasteArea"
           placeholder='Paste your JSON here e.g. {"MONTHLY":{...}}'
-          oninput="jsonPasteInput(this)"
-          style="width:100%;height:90px;font-family:var(--mono);font-size:11px;padding:8px;border:1px solid var(--border);border-radius:6px;resize:vertical;outline:none;line-height:1.4;color:var(--text);background:#fff;"></textarea>
+          style="width:100%;height:110px;font-family:var(--mono);font-size:11px;padding:8px;border:1px solid var(--border);border-radius:6px;resize:vertical;outline:none;line-height:1.4;color:var(--text);background:#fff;" oninput="jsonPasteDebounce()" onpaste="jsonPasteDebounce()"></textarea>
+        <button onclick="jsonPasteValidate()" style="margin-top:6px;width:100%;font-family:var(--font);font-size:12px;font-weight:600;padding:7px;border:none;border-radius:var(--r);background:var(--blue);color:var(--text);cursor:pointer;">&#x2713; Confirm JSON</button>
       </div>
       <span class="slot-status" id="ss-json"></span>
     </div>
@@ -325,28 +328,38 @@ function jsonMode(mode){
   if(mode==='paste') setTimeout(()=>el('jsonPasteArea').focus(),50);
 }
 
-function jsonPasteInput(ta){
+let _jsonDebounceTimer=null;
+function jsonPasteDebounce(){
+  const ss=el('ss-json');
+  if(ss&&!S.P.jsonPaste){ss.className='slot-status';ss.textContent='⏳ Paste complete, then click Confirm…';}
+  clearTimeout(_jsonDebounceTimer);
+  _jsonDebounceTimer=setTimeout(jsonPasteValidate,800);
+}
+function jsonPasteValidate(){
+  clearTimeout(_jsonDebounceTimer);
+  const ta=el('jsonPasteArea');
+  if(!ta)return;
   const val=ta.value.trim();
   const ss=el('ss-json');
   const slot=el('slot-json');
-  if(!val){ ss.textContent=''; ss.className='slot-status'; slot.className='upload-slot'; return; }
-  // Quick validation: try parsing
-  try{
-    const d=JSON.parse(val);
-    // Recursive search — mirrors parseJSONFile's findMonthly()
-    const findM=o=>{if(!o||typeof o!=='object')return null;if(o.MONTHLY&&typeof o.MONTHLY==='object')return o.MONTHLY;for(const v of Object.values(o)){const r=findM(v);if(r)return r;}return null;};
-    if(!findM(d)){ ss.className='slot-status fail'; ss.textContent='\u2717 No MONTHLY block found'; slot.className='upload-slot error'; return; }
-    // Store as pending text
-    S.P.jsonPaste=val;
-    delete S.P.json; // clear file if switching to paste
-    ss.className='slot-status ok'; ss.textContent='\u2713 JSON ready ('+val.length.toLocaleString()+' chars)';
-    slot.className='upload-slot done';
-    el('goBtn').disabled=false;
-  }catch(e){
-    S.P.jsonPaste=null;
-    ss.className='slot-status fail'; ss.textContent='\u2717 '+e.message.substring(0,60);
-    slot.className='upload-slot error';
-  }
+  if(!val){ss.textContent='';ss.className='slot-status';slot.className='upload-slot';return;}
+  ss.className='slot-status';ss.textContent='⏳ Validating…';
+  setTimeout(()=>{
+    try{
+      const d=JSON.parse(val);
+      const findM=o=>{if(!o||typeof o!=='object')return null;if(o.MONTHLY&&typeof o.MONTHLY==='object')return o.MONTHLY;for(const v of Object.values(o)){const r=findM(v);if(r)return r;}return null;};
+      if(!findM(d)){ss.className='slot-status fail';ss.textContent='✗ No MONTHLY block found';slot.className='upload-slot error';return;}
+      S.P.jsonPaste=val;
+      delete S.P.json;
+      ss.className='slot-status ok';ss.textContent='✓ JSON ready — '+val.length.toLocaleString()+' chars';
+      slot.className='upload-slot done';
+      el('goBtn').disabled=false;
+    }catch(e){
+      S.P.jsonPaste=null;
+      ss.className='slot-status fail';ss.textContent='✗ '+(e.message||'Invalid JSON').substring(0,80);
+      slot.className='upload-slot error';
+    }
+  },10);
 }
 
 const rTxt=f=>new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>{let t=e.target.result;if(t.charCodeAt(0)===0xFEFF)t=t.slice(1);res(t);};r.onerror=rej;r.readAsText(f);});
@@ -494,7 +507,7 @@ function parseXLSX(wb){
       if(st==='sp'){
         if(ent==='campaign')R.sp.campaigns.push({...base,...cExt(row)});
         else if(ent==='ad group')R.sp.adGroups.push({...base,defaultBid:sN(gf(row,['default bid']))});
-        else if(ent==='keyword')R.sp.keywords.push({...base,...kExt(row)});
+        else if(ent==='keyword')R.sp.keywords.push(kwRow(row));
         else if(ent==='product targeting')R.sp.productTargeting.push({...base,...tExt(row)});
         else if(ent==='product ad')R.sp.productAds.push({...base,...pExt(row)});
         else if(ent==='bidding adjustment'){const seg=String(gf(row,['segment name','segment'])||'').trim();const rawP=String(gf(row,['placement','placement type'])||'').trim();const pl=rawP||seg||'Unknown';R.sp.biddingAdj.push({...base,placement:pl,segmentName:seg,percentage:sN(gf(row,['percentage','adjustment']))});}
@@ -515,9 +528,60 @@ function parseXLSX(wb){
   });
   return R;
 }
-function bRow(row){const g=ns=>gf(row,ns);return{campaignName:String(g(['campaign name'])||''),adGroupName:String(g(['ad group name'])||''),state:String(g(['state','status'])||'').toLowerCase(),impressions:sN(g(['impressions'])),clicks:sN(g(['clicks'])),spend:sN(g(['spend','cost'])),sales:sN(g(['14 day total sales','7 day total sales','total sales','sales'])),orders:sN(g(['14 day total orders','7 day total orders','total orders','orders']))};}
+function bRow(row){
+  const g=ns=>gf(row,ns);
+  // Sum all available spend/sales/orders columns (14d, 7d, 30d, total)
+  const sumCols=(nss)=>nss.reduce((t,ns)=>{const v=sN(g(ns));return t+(v||0);},0);
+  const spendV=sN(g(['spend','cost']));
+  const salesV=Math.max(
+    sN(g(['14 day total sales'])),
+    sN(g(['7 day total sales'])),
+    sN(g(['30 day total sales'])),
+    sN(g(['total sales','sales']))
+  );
+  const ordersV=Math.max(
+    sN(g(['14 day total orders'])),
+    sN(g(['7 day total orders'])),
+    sN(g(['30 day total orders'])),
+    sN(g(['total orders','orders']))
+  );
+  return{
+    campaignName:String(g(['campaign name (informational only)','campaign name'])||''),
+    adGroupName:String(g(['ad group name (informational only)','ad group name'])||''),
+    state:String(g(['state','status'])||'').toLowerCase().trim(),
+    impressions:sN(g(['impressions'])),
+    clicks:sN(g(['clicks'])),
+    spend:spendV,
+    sales:salesV,
+    orders:ordersV
+  };
+}
 function cExt(row){const g=ns=>gf(row,ns);return{dailyBudget:sN(g(['daily budget'])),biddingStrategy:String(g(['bidding strategy'])||'')};}
-function kExt(row){const g=ns=>gf(row,ns);return{keyword:String(g(['keyword text','keyword'])||''),matchType:String(g(['match type'])||''),bid:sN(g(['bid']))};}
+function kExt(row){const g=ns=>gf(row,ns);return{keyword:String(g(['keyword text','keyword'])||''),matchType:String(g(['match type'])||''),bid:sN(g(['bid'])),campaignState:String(g(['campaign state (informational only)','campaign state'])||'').toLowerCase().trim(),adGroupState:String(g(['ad group state (informational only)','ad group state'])||'').toLowerCase().trim()};}
+// kwRow: reads keyword entity row using exact column name matching (avoids gf ambiguity)
+function kwRow(row){
+  // Find columns by exact normalized name
+  const col=(exact)=>{
+    for(const k of Object.keys(row)){
+      if(k.trim().toLowerCase()===exact)return row[k];
+    }
+    return '';
+  };
+  return{
+    keyword:     String(col('keyword text')||'').trim(),
+    matchType:   String(col('match type')||'').trim().toLowerCase(),
+    state:       String(col('state')||'').trim().toLowerCase(),
+    campaignState: String(col('campaign state (informational only)')||'').trim().toLowerCase(),
+    adGroupState:  String(col('ad group state (informational only)')||'').trim().toLowerCase(),
+    campaignName:  String(col('campaign name (informational only)')||col('campaign name')||'').trim(),
+    adGroupName:   String(col('ad group name (informational only)')||col('ad group name')||'').trim(),
+    spend:  sN(col('spend')),
+    sales:  sN(col('sales')),
+    orders: sN(col('orders')),
+    impressions: sN(col('impressions')),
+    clicks: sN(col('clicks')),
+  };
+}
 function tExt(row){const g=ns=>gf(row,ns);return{expression:String(g(['targeting expression','expression'])||''),expressionType:String(g(['expression type','targeting expression type'])||''),bid:sN(g(['bid']))};}
 function pExt(row){const g=ns=>gf(row,ns);return{asin:String(g(['asin'])||'').trim().toUpperCase(),sku:String(g(['sku'])||'')};}
 function pST(rows){return rows.map(row=>{const g=ns=>gf(row,ns);return{campaignName:String(g(['campaign name'])||''),adGroupName:String(g(['ad group name'])||''),searchTerm:String(g(['customer search term','search term'])||''),matchType:String(g(['match type'])||''),impressions:sN(g(['impressions'])),clicks:sN(g(['clicks'])),spend:sN(g(['spend','cost'])),sales:sN(g(['14 day total sales','7 day total sales','sales'])),orders:sN(g(['14 day total orders','7 day total orders','orders'])),asin:String(g(['advertised asin','asin'])||'').trim().toUpperCase()};}).filter(r=>r.searchTerm);}
@@ -622,23 +686,166 @@ async function processAll(){
 
   el('uploadErrors').innerHTML=errs.length?'<div class="alert alert-w mb16"><div class="alert-title">\u26A0\uFE0F Warnings</div>'+errs.map(e=>'<div class="alert-item">\u2022 '+esc(e)+'</div>').join('')+'</div>':'';
 
+  // Build kwTargetMap BEFORE rendering tabs so rT4/rT5 can use it
+  // Only enabled keywords with enabled campaign AND ad group state
+  // Exact match only for targeting signal; all enabled for Search Term match type display
+  const isEnabled=st=>{const s=(st||'').toLowerCase().trim();return s===''||s==='enabled';};
+  const kwMap=new Map();
+  (S.D.ads.sp.keywords||[]).forEach(kw=>{
+    if(!kw.keyword)return;
+    if(!isEnabled(kw.state))return;
+    if(!isEnabled(kw.campaignState))return;
+    if(!isEnabled(kw.adGroupState))return;
+    const mt=(kw.matchType||'').toLowerCase().trim();
+    // Strip [] exact brackets and "" phrase quotes from keyword text
+    const k=kw.keyword.toLowerCase().trim().replace(/^[\["'[]+|[\]"'\]]+$/g,'').trim();
+    if(!kwMap.has(k))kwMap.set(k,new Map());
+    kwMap.get(k).set(mt,true);
+  });
+  S.D.kwTargetMap=kwMap;
+  console.log('[kwTargetMap] total kws:'+S.D.ads.sp.keywords.length+' enabled+mapped:'+kwMap.size);
+
   rT1();rT2();rT3();rT4();rT5();rT6();
   const pts=[];if(S.D.br.length)pts.push('Business Report');if(S.D.ap.length)pts.push('ASIN');if(S.D.mAds.length)pts.push('Monthly Ads');if(S.D.bm.length)pts.push('Brand Metrics');
   el('sDot').classList.add('ready');el('sTxt').textContent=pts.length?'Loaded: '+pts.join(', '):'Processed';
   goTab('tab1',document.querySelector('.nav-item[onclick*="tab1"]'));
-  // Build keyword targeting map: keyword.toLowerCase() -> Set of enabled match types
-  // Used by both Search Term Analysis and Brand Metrics for "Targeted In" cross-check
-  const kwMap=new Map();
-  (S.D.ads.sp.keywords||[]).forEach(kw=>{
-    if(!kw.keyword||kw.state!=='enabled')return;
-    const k=kw.keyword.toLowerCase().trim();
-    if(!kwMap.has(k))kwMap.set(k,new Set());
-    if(kw.matchType)kwMap.get(k).add(kw.matchType.toLowerCase().trim());
-  });
-  S.D.kwTargetMap=kwMap;
   el('goBtn').disabled=false;el('goBtn').textContent='\u26A1 Process & Analyse';
+  const eb=el('exportBtn');if(eb)eb.style.display='';
 }
+// Debug helper: call debugKw('your keyword') in browser console to check targeting
+window.debugKw=function(q){
+  const map=S.D.kwTargetMap;
+  if(!map){console.log('No kwTargetMap yet');return;}
+  const k=q.toLowerCase().trim();
+  const clean=k.replace(/^[\["'[]+|[\]"'\]]+$/g,'').trim();
+  console.log('Query:',JSON.stringify(k),'cleaned:',JSON.stringify(clean));
+  console.log('Direct hit:',map.get(k));
+  console.log('Cleaned hit:',map.get(clean));
+  console.log('Map size:',map.size);
+  // Show first 10 keys
+  const sample=[...map.keys()].slice(0,10);
+  console.log('Sample keys:',sample);
+  console.log('Debug info:',S.D._kwDebug);
+};
 function markSl(key,ok,msg){const s=el('slot-'+key),ss=el('ss-'+key);if(s)s.className='upload-slot '+(ok?'done':'error');if(ss){ss.className='slot-status '+(ok?'ok':'fail');ss.innerHTML=ok?msg:'\u2717 '+esc(msg);}}
+
+// ============================================================
+// EXPORT SNAPSHOT
+// ============================================================
+function exportSnapshot(){
+  const btn=el('exportBtn');
+  if(btn){btn.textContent='\u23F3 Building...';btn.disabled=true;}
+
+  // Serialise S.D preserving Sets and Maps
+  let dataJson;
+  try{
+    const replacer=(_,v)=>{
+      if(v instanceof Set)return{__type:'Set',values:[...v]};
+      if(v instanceof Map)return{__type:'Map',entries:[...v.entries()]};
+      return v;
+    };
+    dataJson=JSON.stringify(S.D,replacer);
+  }catch(e){
+    alert('Failed to serialise data: '+e.message);
+    if(btn){btn.textContent='\uD83D\uDCE5 Export Report';btn.disabled=false;}
+    return;
+  }
+
+  // Fetch the clean source template (no live DOM state)
+  fetch(location.href,{cache:'no-store'})
+    .then(function(r){return r.text();})
+    .then(function(src){
+
+      // Boot script injected into the exported file
+      // Written as string concatenation to avoid </scr+ipt> splitting the block
+      var boot=[
+        '(function(){',
+        '  var raw='+dataJson+';',
+        '  function revive(_,v){',
+        '    if(v&&v.__type==="Set")return new Set(v.values);',
+        '    if(v&&v.__type==="Map")return new Map(v.entries);',
+        '    return v;',
+        '  }',
+        '  window.__BD=JSON.parse(JSON.stringify(raw),revive);',
+        '})();'
+      ].join('
+');
+
+      var autorun=[
+        'window.addEventListener("DOMContentLoaded",function(){',
+        '  S.D=window.__BD;',
+        // rebuild kwTargetMap exactly like processAll
+        '  var isEn=function(st){var s=(st||"").toLowerCase().trim();return s===""||s==="enabled";};',
+        '  var km=new Map();',
+        '  ((S.D.ads&&S.D.ads.sp&&S.D.ads.sp.keywords)||[]).forEach(function(kw){',
+        '    if(!kw.keyword)return;',
+        '    if(!isEn(kw.state)||!isEn(kw.campaignState)||!isEn(kw.adGroupState))return;',
+        '    var mt=(kw.matchType||"").toLowerCase().trim();',
+        '    var k=kw.keyword.toLowerCase().trim().replace(/^["\'\[]+|["\' \]]+$/g,"").trim();',
+        '    if(!km.has(k))km.set(k,new Map());',
+        '    km.get(k).set(mt,true);',
+        '  });',
+        '  S.D.kwTargetMap=km;',
+        // render all tabs AFTER kwTargetMap is ready
+        '  try{rT1();}catch(e){}',
+        '  try{rT2();}catch(e){}',
+        '  try{rT3();}catch(e){}',
+        '  try{rT4();}catch(e){}',
+        '  try{rT5();}catch(e){}',
+        '  try{rT6();}catch(e){}',
+        // hide upload, show tab1
+        '  var panels=document.querySelectorAll(".panel");',
+        '  panels.forEach(function(p){p.classList.remove("active");});',
+        '  var t1=document.getElementById("panel-tab1");',
+        '  if(t1)t1.classList.add("active");',
+        '  document.querySelectorAll(".nav-item").forEach(function(n){n.classList.remove("active");});',
+        '  document.querySelectorAll(".nav-item").forEach(function(n){',
+        '    if((n.getAttribute("onclick")||"").indexOf("tab1")>-1)n.classList.add("active");',
+        '  });',
+        '  var up=document.getElementById("panel-upload");if(up)up.style.display="none";',
+        '  var eb=document.getElementById("exportBtn");if(eb)eb.style.display="";',
+        '  var gb=document.getElementById("goBtn");if(gb)gb.style.display="none";',
+        // badge
+        '  var b=document.createElement("div");',
+        '  b.textContent="\uD83D\uDCCB Snapshot Report";',
+        '  b.style.cssText="position:fixed;bottom:12px;right:12px;background:#BEE3DB;color:#1F2937;font-size:11px;font-weight:700;padding:5px 10px;border-radius:20px;z-index:9999;font-family:monospace;pointer-events:none;";',
+        '  document.body.appendChild(b);',
+        '});'
+      ].join('
+');
+
+      // Wrap in script tags using concatenation so HTML parser never sees </script>
+      var sc='<'+'script>';
+      var ec='<'+'/script>';
+      var injected=sc+boot+ec+sc+autorun+ec;
+
+      // Inject just before </head> in the clean source
+      var html=src.replace('</head>',injected+'</head>');
+
+      // Download
+      var blob=new Blob([html],{type:'text/html;charset=utf-8'});
+      var url=URL.createObjectURL(blob);
+      var a=document.createElement('a');
+      var now=new Date();
+      var stamp=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+      a.download='amazon-audit-report-'+stamp+'.html';
+      a.href=url;
+      a.click();
+      URL.revokeObjectURL(url);
+      if(btn){btn.textContent='\uD83D\uDCE5 Export Report';btn.disabled=false;}
+    })
+    .catch(function(e){
+      // Fallback message if fetch fails (e.g. opened as file://)
+      alert('Export requires the app to be served from a web server (HTTP/HTTPS).
+
+If running locally, use a local server:
+  npx serve .
+or host on GitHub Pages.
+
+Error: '+e.message);
+      if(btn){btn.textContent='\uD83D\uDCE5 Export Report';btn.disabled=false;}
+    });
+}
 
 // ============================================================
 // TAB 1: EXECUTIVE
@@ -1071,10 +1278,9 @@ function rT4(){
     return[...map.values()].map(a=>{
       const key=a.searchTerm.toLowerCase().trim();
       // Direct keyword match: e.g. keyword "guitar pick punch" exactly matches search term
-      const directMts=kwMap.get(key)||new Set();
-      // Also check if any enabled keyword is a substring of the search term (broad/phrase match)
-      // Only check direct match + substring for perf — full broad sim is out of scope
-      const allMts=new Set([...directMts]);
+      const kwMtMap=kwMap.get(key)||new Map();
+      // Build targeted set from enabled keyword match types
+      const allMts=new Set([...kwMtMap.keys()]);
       // Fallback: use match types from search term report if no keyword found
       if(allMts.size===0&&a._stMatchTypes){for(const mt of a._stMatchTypes)allMts.add(mt);}
       const targeted=[...allMts].sort((x,y)=>{const xi=MT_ORDER.indexOf(x),yi=MT_ORDER.indexOf(y);return(xi<0?99:xi)-(yi<0?99:yi);});
@@ -1187,19 +1393,36 @@ function rT4(){
 function rT5(){
   const bm=S.D.bm;
   if(!bm.length){htm('t5','<div class="empty-state"><span class="empty-icon">&#x1F4C8;</span><div class="empty-title">No Brand Metrics</div><div>Upload one or more Brand Metrics CSVs (one per brand or period)</div></div>');return;}
-  // Build SP spend map for PPC cross-ref metrics (spend/sales/orders)
+  // SP spend/sales/orders: only enabled keywords (all 3 state cols), exact match only
+  const isEnabledBM=st=>{const s=(st||'').toLowerCase().trim();return s===''||s==='enabled';};
   const spMap=new Map();
-  S.D.ads.sp.searchTerms.forEach(t=>{const k=t.searchTerm.toLowerCase().trim();const c=spMap.get(k)||{spend:0,sales:0,orders:0};c.spend+=t.spend;c.sales+=t.sales;c.orders+=t.orders;spMap.set(k,c);});
-  // Keyword targeting map: only enabled SP keywords -> which match types are active
+  S.D.ads.sp.keywords.forEach(kw=>{
+    if(!kw.keyword)return;
+    // Only include if all 3 states are enabled
+    if(!isEnabledBM(kw.state)||!isEnabledBM(kw.campaignState)||!isEnabledBM(kw.adGroupState))return;
+    // Only exact match for spend attribution
+    const mt=(kw.matchType||'').toLowerCase().trim();
+    if(mt!=='exact')return;
+    const k=kw.keyword.toLowerCase().trim().replace(/^["'[]+|["'\]]+$/g,'').trim();
+    const c=spMap.get(k)||{spend:0,sales:0,orders:0};
+    c.spend+=kw.spend||0;c.sales+=kw.sales||0;c.orders+=kw.orders||0;
+    spMap.set(k,c);
+  });
+  const stMtMap=new Map();
+  // Keyword targeting map (same as Search Term tab uses)
   const kwMap=S.D.kwTargetMap||new Map();
   const MT_ORDER_BM=['broad','phrase','exact','auto'];
   const enr=bm.map(r=>{
     const k=r.query.toLowerCase().trim();
     const sp=spMap.get(k)||{spend:0,sales:0,orders:0};
-    // isTgt = has an ENABLED keyword in SP campaigns that exactly matches this query
-    const kwMts=kwMap.get(k)||new Set();
-    const isTgt=kwMts.size>0;
-    const targetedMts=[...kwMts].sort((x,y)=>{const xi=MT_ORDER_BM.indexOf(x),yi=MT_ORDER_BM.indexOf(y);return(xi<0?99:xi)-(yi<0?99:yi);});
+    // Exact same logic as Search Term Analysis targeted lookup
+    const kwMtMap=kwMap.get(k)||new Map();
+    const allMts=new Set([...kwMtMap.keys()]);
+    // Fallback: use match types from SP search term report if no keyword found
+    if(allMts.size===0&&stMtMap.has(k)){for(const mt of stMtMap.get(k))allMts.add(mt);}
+    const targetedMts=[...allMts].sort((x,y)=>{const xi=MT_ORDER_BM.indexOf(x),yi=MT_ORDER_BM.indexOf(y);return(xi<0?99:xi)-(yi<0?99:yi);});
+    // isTgt: has exact match keyword OR shows up in exact match search term report
+    const isTgt=allMts.has('exact');
     let sig=null;
     if(r.volume>500&&r.purShare<0.2&&!isTgt)sig='op';
     else if(r.volume>200&&sp.spend<20&&sp.orders>0)sig='ui';
