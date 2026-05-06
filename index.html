@@ -801,14 +801,12 @@ function exportSnapshot(){
         '  document.querySelectorAll(".nav-item").forEach(function(n){',
         '    if((n.getAttribute("onclick")||"").indexOf("tab1")>-1)n.classList.add("active");',
         '  });',
+        // Hide all upload/export UI — this is a fixed read-only report
         '  var up=document.getElementById("panel-upload");if(up)up.style.display="none";',
-        '  var eb=document.getElementById("exportBtn");if(eb)eb.style.display="";',
+        '  var eb=document.getElementById("exportBtn");if(eb)eb.style.display="none";',
         '  var gb=document.getElementById("goBtn");if(gb)gb.style.display="none";',
-        // badge
-        '  var b=document.createElement("div");',
-        '  b.textContent="\uD83D\uDCCB Snapshot Report";',
-        '  b.style.cssText="position:fixed;bottom:12px;right:12px;background:#BEE3DB;color:#1F2937;font-size:11px;font-weight:700;padding:5px 10px;border-radius:20px;z-index:9999;font-family:monospace;pointer-events:none;";',
-        '  document.body.appendChild(b);',
+        // Also hide the sidebar export button container
+        '  var sideExport=eb&&eb.parentElement;if(sideExport)sideExport.style.display="none";',
         '});'
       ].join('\n');
 
