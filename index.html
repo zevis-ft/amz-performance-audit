@@ -768,8 +768,7 @@ function exportSnapshot(){
         '  }',
         '  window.__BD=JSON.parse(JSON.stringify(raw),revive);',
         '})();'
-      ].join('
-');
+      ].join('\n');
 
       var autorun=[
         'window.addEventListener("DOMContentLoaded",function(){',
@@ -811,10 +810,9 @@ function exportSnapshot(){
         '  b.style.cssText="position:fixed;bottom:12px;right:12px;background:#BEE3DB;color:#1F2937;font-size:11px;font-weight:700;padding:5px 10px;border-radius:20px;z-index:9999;font-family:monospace;pointer-events:none;";',
         '  document.body.appendChild(b);',
         '});'
-      ].join('
-');
+      ].join('\n');
 
-      // Wrap in script tags using concatenation so HTML parser never sees </script>
+      // Wrap in script tags using concatenation to avoid HTML parser splitting the block
       var sc='<'+'script>';
       var ec='<'+'/script>';
       var injected=sc+boot+ec+sc+autorun+ec;
@@ -836,13 +834,7 @@ function exportSnapshot(){
     })
     .catch(function(e){
       // Fallback message if fetch fails (e.g. opened as file://)
-      alert('Export requires the app to be served from a web server (HTTP/HTTPS).
-
-If running locally, use a local server:
-  npx serve .
-or host on GitHub Pages.
-
-Error: '+e.message);
+      alert('Export requires the app to be served from a web server (HTTP/HTTPS). If running locally use: npx serve . Error: '+e.message);
       if(btn){btn.textContent='\uD83D\uDCE5 Export Report';btn.disabled=false;}
     });
 }
