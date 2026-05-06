@@ -1282,16 +1282,24 @@ function rT4(){
   };
 
   // Action tag logic
+  // Fixed ACOS thresholds — independent of account average, works for any AOV
+  const ACOS_ISOLATE=0.50;   // 50% — converting but inefficient, isolate to control bid
+  const ACOS_NEG=1.00;       // 100% — spending more than making back
+  const MIN_SPEND=aov*0.3;   // minimum meaningful spend before flagging
+  const MIN_CLICKS=10;
+
   const getAction=r=>{
     const acos=dv(r.spend,r.sales);
-    const avgAcos=S._t4AvgAcos||0.4; // fallback 40%
-    const highAcos=acos>avgAcos*1.5&&r.sales>0;
-    const noOrder=r.orders===0&&r.spend>aov*0.3;
-    if(noOrder||highAcos){
-      if(r.orders>3&&highAcos)return{label:'Isolate',cls:'b-df',tip:'High orders but high ACOS — move to own campaign to control bids'};
-      if(noOrder)return{label:'Potential Negative',cls:'b-ps',tip:'High spend, no orders — add as negative keyword'};
-      return{label:'Potential Negative',cls:'b-ps',tip:'Low orders, high ACOS — consider negating or reducing bid'};
-    }
+    const enoughData=r.clicks>=MIN_CLICKS&&r.spend>=MIN_SPEND;
+    // No orders + meaningful spend = wasted spend
+    if(r.orders===0&&enoughData)
+      return{label:'Potential Negative',cls:'b-ps',tip:'No conversions with significant spend — add as negative keyword'};
+    // ACOS > 100% = spending more than revenue returned
+    if(r.sales>0&&acos>ACOS_NEG&&enoughData)
+      return{label:'Potential Negative',cls:'b-ps',tip:'ACOS over 100% — spending more than revenue returned'};
+    // ACOS 50–100% with enough orders = isolate to control bid
+    if(r.orders>3&&r.sales>0&&acos>ACOS_ISOLATE&&acos<=ACOS_NEG)
+      return{label:'Isolate',cls:'b-df',tip:'Converting but high ACOS (>50%) — move to own campaign to reduce bid'};
     return null;
   };
 
@@ -1300,17 +1308,9 @@ function rT4(){
   const getRows=()=>{
     const agg=aggregate(terms());
     // Compute avg ACOS from terms that have sales — used for high-ACOS threshold
-    const withSales=agg.filter(r=>r.sales>0&&r.spend>0);
-    S._t4AvgAcos=withSales.length?withSales.reduce((s,r)=>s+dv(r.spend,r.sales),0)/withSales.length:0.4;
     let t=agg;
     if(stW){
-      const avgA=S._t4AvgAcos;
-      t=t.filter(r=>{
-        const acos=dv(r.spend,r.sales);
-        const highAcos=r.sales>0&&acos>avgA*1.5;
-        const noOrder=r.orders===0&&r.spend>aov*0.3&&r.clicks>20;
-        return highAcos||noOrder;
-      });
+      t=t.filter(r=>getAction(r)!==null);
     }
     return[...t].sort((a,b)=>b.spend-a.spend);
   };
@@ -1343,20 +1343,14 @@ function rT4(){
 
   const mount=()=>{
     const agg=aggregate(terms());
-    const avgA=S._t4AvgAcos||0.4;
-    const w=agg.filter(r=>{
-      const acos=dv(r.spend,r.sales);
-      const highAcos=r.sales>0&&acos>avgA*1.5;
-      const noOrder=r.orders===0&&r.spend>aov*0.3&&r.clicks>20;
-      return highAcos||noOrder;
-    });
+    const w=agg.filter(r=>getAction(r)!==null);
     const wCounts={isolate:0,neg:0};
     w.forEach(r=>{const a=getAction(r);if(a)a.label==='Isolate'?wCounts.isolate++:wCounts.neg++;});
     const banner=w.length&&!stW?'<div class="alert alert-w mb16"><div class="alert-title">&#x1F4B8; '+w.length+' Terms need attention — '+wCounts.isolate+' to isolate, '+wCounts.neg+' potential negatives</div></div>':'';
     const spBtn='<button class="toggle-btn '+(stType==='sp'?'on':'')+'" onclick="t4sw(this,&quot;sp&quot;)">SP</button>';
     const sbBtn='<button class="toggle-btn '+(stType==='sb'?'on':'')+'" onclick="t4sw(this,&quot;sb&quot;)">SB</button>';
     const wBtn='<button class="pill '+(stW?'don':'')+'" onclick="t4wToggle()">&#x26A0; Needs Action ('+w.length+')</button>';
-    const info='<span style="font-size:12px;color:var(--text2);">AOV: '+fC(aov)+' · High ACOS threshold: '+fP((S._t4AvgAcos||0.4)*1.5)+'</span>';
+    const info='<span style="font-size:12px;color:var(--text2);">AOV: '+fC(aov)+' · Thresholds: Isolate >50% ACOS, Negative >100% ACOS or 0 orders</span>';
     htm('t4', banner
       +'<div class="table-controls mb16">'
         +'<div class="toggle-row">'+spBtn+sbBtn+'</div>'
